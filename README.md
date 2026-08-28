@@ -1,22 +1,24 @@
-# equix
+# equix-cgo
 
 ## 概要
 
 Go cgo 封装，绑定 [tevador/equix](https://github.com/tevador/equix) 的 **equix_v2** 分支（HashWX）。
 
-    import "github.com/cxio/equix"
+```go
+import "github.com/cxio/equix-cgo"
 
-    sols, err := equix.SolveWithNonce(challenge, nonce)
+sols, err := equix.SolveWithNonce(challenge, nonce)
+if err != nil {
+    return err
+}
+for _, sol := range sols {
+    h, err := equix.VerifyWithHashesAndNonce(challenge, nonce, sol)
     if err != nil {
         return err
     }
-    for _, sol := range sols {
-        h, err := equix.VerifyWithHashesAndNonce(challenge, nonce, sol)
-        if err != nil {
-            return err
-        }
-        _ = h
-    }
+    _ = h
+}
+```
 
 需要 `CGO_ENABLED=1` 和 C 编译器（gcc/clang；Windows 用 MinGW）。不支持 `CGO_ENABLED=0`。
 
@@ -25,6 +27,7 @@ Go cgo 封装，绑定 [tevador/equix](https://github.com/tevador/equix) 的 **e
 - equix `350a85dedda1344637dac09a1de786ee63a5fb01`（`equix_v2`）
 - hashx `08babdf4f41b0b8991d1fa94914c7c6902de0cb6`
 - hashwx `d771cbf6cdc070755f7d137cdcf9d781af14da3f`
+
 
 
 ## 用例
@@ -43,7 +46,7 @@ package main
 import (
     "fmt"
 
-    "github.com/cxio/equix"
+    "github.com/cxio/equix-cgo"
 )
 
 func main() {
@@ -128,7 +131,7 @@ for _, r := range results {
 }
 ```
 
-`VerifyWithHashes*` 会先生成 HashWX 再做与 `Verify` 相同的检查。因此 **`ErrOrder` / `ErrPartialSum` / `ErrFinalSum` 时仍返回已算出的哈希**；只有 `ErrClosed` 或分配失败才是零值 `Hashes`。
+`VerifyWithHashes*` 会先生成 HashWX 再做与 `Verify` 相同的检查。因此 `ErrOrder` **/** `ErrPartialSum` **/** `ErrFinalSum` **时仍返回已算出的哈希**；只有 `ErrClosed` 或分配失败才是零值 `Hashes`。
 
 `VerifyHashes` 是纯 Go，不调用 HashWX、不需要 challenge。它是合法解的必要但非充分条件：通过只说明这 8 个数满足加法树，不证明它们来自某个 challenge。完整 puzzle 仍用 `Verify*` 或 `VerifyWithHashes*`。
 
@@ -155,14 +158,16 @@ if err := sol2.UnmarshalBinary(b); err != nil {
 
 可用 `errors.Is` 判断：
 
-| 值 | 何时 |
-|----|------|
-| `ErrNotSupported` | JIT 与解释器都分配不了 context |
-| `ErrChallenge` | C `EQUIX_CHALLENGE`（v2 上几乎不会出现） |
-| `ErrOrder` | 索引顺序不对 |
-| `ErrPartialSum` | 部分和缺少规定的尾零 |
-| `ErrFinalSum` | 八哈希之和低 60 位不为 0 |
-| `ErrClosed` | 使用已 Close 的 `Solver` / `Verifier` |
+
+| 值                 | 何时                                |
+| ----------------- | --------------------------------- |
+| `ErrNotSupported` | JIT 与解释器都分配不了 context             |
+| `ErrChallenge`    | C `EQUIX_CHALLENGE`（v2 上几乎不会出现）   |
+| `ErrOrder`        | 索引顺序不对                            |
+| `ErrPartialSum`   | 部分和缺少规定的尾零                        |
+| `ErrFinalSum`     | 八哈希之和低 60 位不为 0                   |
+| `ErrClosed`       | 使用已 Close 的 `Solver` / `Verifier` |
+
 
 `UnmarshalBinary` 长度错误、内存分配失败等是普通 `error`，不是上表哨兵。
 
