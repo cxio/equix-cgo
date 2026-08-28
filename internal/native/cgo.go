@@ -12,5 +12,10 @@ package native
 #include <stdint.h>
 #include <stdlib.h>
 #include <equix.h>
+
+void native_make_hashwx(equix_ctx* ctx, const void* challenge, size_t n);
+void native_fill_hashes(equix_ctx* ctx, const uint16_t idx[8], uint64_t out[8]);
+void native_make_and_fill_hashes(equix_ctx* ctx, const void* challenge, size_t n,
+	const uint16_t idx[8], uint64_t out[8]);
 */
 import "C"

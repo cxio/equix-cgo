@@ -179,3 +179,71 @@ func TestNonceConcatInvariant(t *testing.T) {
 		}
 	}
 }
+
+func TestSolveWithHashesMatchesSolve(t *testing.T) {
+	s, err := NewSolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ch, _ := findSolution(t)
+	sols, err := s.Solve(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := s.SolveWithHashes(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != len(sols) {
+		t.Fatalf("len %d != %d", len(results), len(sols))
+	}
+	for i := range sols {
+		if results[i].Solution != sols[i] {
+			t.Fatalf("solution %d", i)
+		}
+		if err := VerifyHashes(results[i].Hashes); err != nil {
+			t.Fatalf("hashes %d: %v", i, err)
+		}
+		sum := uint64(0)
+		for _, h := range results[i].Hashes {
+			sum += h
+		}
+		if sum&((uint64(1)<<60)-1) != 0 {
+			t.Fatalf("low 60 bits of sum = %x", sum)
+		}
+	}
+}
+
+func TestSolveWithHashesAndNonce(t *testing.T) {
+	s, err := NewSolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ch := []byte("h")
+	var nonce uint64
+	var results []Result
+	for n := uint64(0); n < 32 && len(results) == 0; n++ {
+		nonce = n
+		results, err = s.SolveWithHashesAndNonce(ch, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(results) == 0 {
+		t.Fatal("no solution")
+	}
+	sols, err := s.SolveWithNonce(ch, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sols) != len(results) {
+		t.Fatal("len")
+	}
+	for i := range sols {
+		if sols[i] != results[i].Solution {
+			t.Fatalf("sol %d", i)
+		}
+	}
+}
