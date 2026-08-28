@@ -9,13 +9,16 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"runtime"
+	"sync/atomic"
 	"unsafe"
 )
 
 var ErrNotSupported = errors.New("equix: requested context type not supported")
 
 type Context struct {
-	ptr *C.equix_ctx
+	ptr     *C.equix_ctx
+	cleanup runtime.Cleanup
 }
 
 func isNotSupp(p *C.equix_ctx) bool {
@@ -34,7 +37,9 @@ func alloc(base C.equix_ctx_flags) (*Context, error) {
 	if isNotSupp(p) {
 		return nil, ErrNotSupported
 	}
-	return &Context{ptr: p}, nil
+	c := &Context{ptr: p}
+	c.cleanup = runtime.AddCleanup(c, freeEquixCtx, p)
+	return c, nil
 }
 
 func NewSolver() (*Context, error) {
@@ -45,12 +50,22 @@ func NewVerifier() (*Context, error) {
 	return alloc(C.EQUIX_CTX_VERIFY)
 }
 
+var freeEquixCount atomic.Uint64
+
+func freeEquixCtx(p *C.equix_ctx) {
+	C.equix_free(p)
+	freeEquixCount.Add(1)
+}
+
 func (c *Context) Close() {
 	if c == nil || c.ptr == nil {
 		return
 	}
-	C.equix_free(c.ptr)
+	c.cleanup.Stop()
+	p := c.ptr
 	c.ptr = nil
+	freeEquixCtx(p)
+	runtime.KeepAlive(c)
 }
 
 func (c *Context) dead() error {
@@ -72,6 +87,7 @@ func (c *Context) Solve(challenge []byte) ([][8]uint16, error) {
 	if err := c.dead(); err != nil {
 		return nil, err
 	}
+	defer runtime.KeepAlive(c)
 	var out [C.EQUIX_MAX_SOLS]C.equix_solution
 	ptr, n, free := cChallenge(challenge)
 	defer free()
@@ -92,6 +108,7 @@ func (c *Context) Verify(challenge []byte, idx [8]uint16) (int, error) {
 	if err := c.dead(); err != nil {
 		return -1, err
 	}
+	defer runtime.KeepAlive(c)
 	var sol C.equix_solution
 	for i := 0; i < 8; i++ {
 		sol.idx[i] = C.equix_idx(idx[i])

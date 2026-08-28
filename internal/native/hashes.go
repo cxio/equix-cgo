@@ -11,11 +11,14 @@ void native_make_and_fill_hashes(equix_ctx* ctx, const void* challenge, size_t n
 */
 import "C"
 
+import "runtime"
+
 func (c *Context) FillHashes(idx [8]uint16) ([8]uint64, error) {
 	var zero [8]uint64
 	if err := c.dead(); err != nil {
 		return zero, err
 	}
+	defer runtime.KeepAlive(c)
 	var cidx [8]C.uint16_t
 	var out [8]C.uint64_t
 	for i := 0; i < 8; i++ {
@@ -34,6 +37,7 @@ func (c *Context) MakeAndFillHashes(challenge []byte, idx [8]uint16) ([8]uint64,
 	if err := c.dead(); err != nil {
 		return zero, err
 	}
+	defer runtime.KeepAlive(c)
 	var cidx [8]C.uint16_t
 	var out [8]C.uint64_t
 	for i := 0; i < 8; i++ {

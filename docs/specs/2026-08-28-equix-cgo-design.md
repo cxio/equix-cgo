@@ -200,10 +200,10 @@ HashX 仍会编译进二进制（官方 `context.c`/`equix.c` 含 v1 分支）�
 C 的 `equix_ctx` 非线程安全。
 
 - 同一个 `Solver` 或 `Verifier` 不得被多个 goroutine 同时使用。需要并行时各用各的实例。
-- 包级函数使用两个 `sync.Pool`：solver 池（~1.8 MiB/个）与 verifier 池。每次调用 `Get`，用完 `Put`。池中对象在进程内不 `equix_free`。
+- 包级函数使用两个 `sync.Pool`：solver 池（~1.8 MiB/个）与 verifier 池。每次调用 `Get`，用完 `Put`。池路径不主动 `Close` / `equix_free`。`sync.Pool` 会在 GC 时丢弃闲置对象；`native.Context` 用 `runtime.AddCleanup` 在对象不可达后调用 `equix_free`，避免 C 堆泄漏累积。
 - 池的 `New` 与 `NewSolver`/`NewVerifier` 使用同一套 JIT 回退。池分配失败时，该次包级调用返回错误（不缓存失败对象）。
 - `Close` 幂等；对 `nil` receiver 安全（不 panic）。Close 后再调用 `Solve`/`Verify` 及其带 nonce、带哈希的变体，返回 `ErrClosed`。
-- 显式实例由调用方 `Close`；未 Close 会泄漏对应 C 堆（solver 约 1.8 MiB）。`runtime.SetFinalizer` 不作要求。
+- 显式实例由调用方 `Close`。`Close` 先 `Stop` cleanup 再 `equix_free`，并用 `runtime.KeepAlive` 保证 `Stop` 生效，避免与 cleanup 双重释放。未 Close 时 cleanup 仍会在对象不可达后释放 C 堆（solver 约 1.8 MiB）。
 
 ## 错误
 

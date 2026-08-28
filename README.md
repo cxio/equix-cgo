@@ -29,7 +29,7 @@ Go cgo 封装，绑定 [tevador/equix](https://github.com/tevador/equix) 的 **e
 
 ## 用例
 
-包级函数（`Solve` / `Verify` 及带 nonce、带哈希的变体）内部用 `sync.Pool` 复用 context，**可以**从多个 goroutine 同时调用。需要反复求解或校验时，也可以自己持有 `Solver` / `Verifier`，避免每次从池里取；同一个实例**不是**线程安全的，用完必须 `Close`（solver 约 1.8 MiB C 堆）。
+包级函数（`Solve` / `Verify` 及带 nonce、带哈希的变体）内部用 `sync.Pool` 复用 context，**可以**从多个 goroutine 同时调用。每个 solver 约 1.8 MiB C 堆；池随并发峰值变大，GC 丢掉闲置对象后由 `runtime.AddCleanup` 回收 C 堆（不是 `Put` 立刻归还），所以占用随近期峰值走，回落大约晚一到两轮 GC。需要反复求解或校验、或要卡住内存上限时，自己持有固定数量的 `Solver` / `Verifier`；同一个实例**不是**线程安全的，用完必须 `Close`。未 Close 的实例同样靠 cleanup 兜底，但调用方仍应显式 Close。
 
 一次 `Solve*` 最多返回 8 个解。部分 challenge 本来无解：成功时仍返回空切片和 `nil` error，不会返回 `nil` 切片。
 
