@@ -318,6 +318,23 @@ func TestVerifyWithHashesStillReturnsOnOrder(t *testing.T) {
 	}
 }
 
+func TestPackageLevelSolveVerify(t *testing.T) {
+	ch, sol := findSolution(t)
+	sols, err := Solve(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sols) == 0 {
+		t.Fatal("expected solutions")
+	}
+	if err := Verify(ch, sol); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SolveWithNonce([]byte("p"), 0); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestVerifyWithHashesAndNonce(t *testing.T) {
 	s, err := NewSolver()
 	if err != nil {
