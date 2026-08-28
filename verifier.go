@@ -39,6 +39,10 @@ func (v *Verifier) Verify(challenge []byte, sol Solution) error {
 	return mapVerify(code)
 }
 
+func (v *Verifier) VerifyWithNonce(challenge []byte, nonce uint64, sol Solution) error {
+	return v.Verify(appendNonce(challenge, nonce), sol)
+}
+
 func (v *Verifier) Close() error {
 	if v == nil || v.ctx == nil {
 		return nil

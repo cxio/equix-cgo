@@ -39,6 +39,10 @@ func (s *Solver) Solve(challenge []byte) ([]Solution, error) {
 	return toSolutions(raw), nil
 }
 
+func (s *Solver) SolveWithNonce(challenge []byte, nonce uint64) ([]Solution, error) {
+	return s.Solve(appendNonce(challenge, nonce))
+}
+
 func (s *Solver) Close() error {
 	if s == nil || s.ctx == nil {
 		return nil

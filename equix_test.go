@@ -102,3 +102,80 @@ func TestEmptyChallengeNoPanic(t *testing.T) {
 		t.Fatal("Solve must return empty slice, not nil")
 	}
 }
+
+func TestNonceRoundTrip(t *testing.T) {
+	s, err := NewSolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	v, err := NewVerifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	ch := []byte("cxio")
+	var nonce uint64 = 7
+	var sols []Solution
+	for n := uint64(0); n < 32 && len(sols) == 0; n++ {
+		nonce = n
+		sols, err = s.SolveWithNonce(ch, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(sols) == 0 {
+		t.Fatal("no solution")
+	}
+	if err := v.VerifyWithNonce(ch, nonce, sols[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.VerifyWithNonce(ch, nonce+1, sols[0]); err == nil {
+		t.Fatal("wrong nonce must fail")
+	}
+	if err := v.VerifyWithNonce([]byte("other"), nonce, sols[0]); err == nil {
+		t.Fatal("wrong challenge must fail")
+	}
+}
+
+func TestNonceConcatInvariant(t *testing.T) {
+	s, err := NewSolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	v, err := NewVerifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	ch := []byte{0x11, 0x22}
+	var nonce uint64
+	var sols []Solution
+	for n := uint64(0); n < 32 && len(sols) == 0; n++ {
+		nonce = n
+		sols, err = s.SolveWithNonce(ch, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(sols) == 0 {
+		t.Fatal("no solution")
+	}
+	wired := appendNonce(ch, nonce)
+	if err := v.Verify(wired, sols[0]); err != nil {
+		t.Fatal(err)
+	}
+	wiredSols, err := s.Solve(wired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wiredSols) != len(sols) {
+		t.Fatalf("len %d != %d", len(wiredSols), len(sols))
+	}
+	for i := range sols {
+		if wiredSols[i] != sols[i] {
+			t.Fatalf("solution %d diverged", i)
+		}
+	}
+}
