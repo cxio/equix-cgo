@@ -247,3 +247,106 @@ func TestSolveWithHashesAndNonce(t *testing.T) {
 		}
 	}
 }
+
+func TestVerifyWithHashesMatchesSolve(t *testing.T) {
+	ch, sol := findSolution(t)
+	s, err := NewSolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	results, err := s.SolveWithHashes(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want Hashes
+	for _, r := range results {
+		if r.Solution == sol {
+			want = r.Hashes
+			break
+		}
+	}
+	v, err := NewVerifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	got, err := v.VerifyWithHashes(ch, sol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("%v != %v", got, want)
+	}
+}
+
+func TestVerifyWithHashesStillReturnsOnOrder(t *testing.T) {
+	ch, sol := findSolution(t)
+	s, err := NewSolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	results, err := s.SolveWithHashes(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want Hashes
+	for _, r := range results {
+		if r.Solution == sol {
+			want = r.Hashes
+			break
+		}
+	}
+	bad := sol
+	bad[0], bad[1] = bad[1], bad[0]
+	v, err := NewVerifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	got, err := v.VerifyWithHashes(ch, bad)
+	if !errors.Is(err, ErrOrder) {
+		t.Fatalf("got %v, want ErrOrder", err)
+	}
+	if got == (Hashes{}) {
+		t.Fatal("hashes must still be populated")
+	}
+	// swapped indices → swapped first two hash slots vs valid solution
+	if got[0] != want[1] || got[1] != want[0] {
+		t.Fatalf("hashes should follow the (swapped) indices: got %v want swap of %v", got, want)
+	}
+}
+
+func TestVerifyWithHashesAndNonce(t *testing.T) {
+	s, err := NewSolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	v, err := NewVerifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	ch := []byte("n")
+	var nonce uint64
+	var results []Result
+	for n := uint64(0); n < 32 && len(results) == 0; n++ {
+		nonce = n
+		results, err = s.SolveWithHashesAndNonce(ch, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(results) == 0 {
+		t.Fatal("no solution")
+	}
+	h, err := v.VerifyWithHashesAndNonce(ch, nonce, results[0].Solution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h != results[0].Hashes {
+		t.Fatal("hash mismatch")
+	}
+}

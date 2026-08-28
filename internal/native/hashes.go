@@ -63,3 +63,16 @@ func (c *Context) SolveWithHashes(challenge []byte) ([][8]uint16, [][8]uint64, e
 	}
 	return sols, hs, nil
 }
+
+func (c *Context) VerifyWithHashes(challenge []byte, idx [8]uint16) ([8]uint64, int, error) {
+	var zero [8]uint64
+	h, err := c.MakeAndFillHashes(challenge, idx)
+	if err != nil {
+		return zero, -1, err
+	}
+	code, err := c.Verify(challenge, idx)
+	if err != nil {
+		return h, -1, err
+	}
+	return h, code, nil
+}

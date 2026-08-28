@@ -43,6 +43,22 @@ func (v *Verifier) VerifyWithNonce(challenge []byte, nonce uint64, sol Solution)
 	return v.Verify(appendNonce(challenge, nonce), sol)
 }
 
+func (v *Verifier) VerifyWithHashes(challenge []byte, sol Solution) (Hashes, error) {
+	var zero Hashes
+	if err := v.closed(); err != nil {
+		return zero, err
+	}
+	h, code, err := v.ctx.VerifyWithHashes(challenge, [8]uint16(sol))
+	if err != nil {
+		return zero, err
+	}
+	return Hashes(h), mapVerify(code)
+}
+
+func (v *Verifier) VerifyWithHashesAndNonce(challenge []byte, nonce uint64, sol Solution) (Hashes, error) {
+	return v.VerifyWithHashes(appendNonce(challenge, nonce), sol)
+}
+
 func (v *Verifier) Close() error {
 	if v == nil || v.ctx == nil {
 		return nil
