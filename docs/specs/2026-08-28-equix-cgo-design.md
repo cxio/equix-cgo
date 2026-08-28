@@ -13,6 +13,7 @@
 - 提供 `Solve` / `Verify`，以及可复用的 `Solver` / `Verifier`。
 - 另提供带 `uint64` nonce 的 API：nonce 由调用方固定，challenge 由外部变化；本包不在内部搜索或递增 nonce。
 - 另提供返回解与 8 个 HashWX 哈希值的 API（`SolveWithHashes` / `SolveWithHashesAndNonce`）。
+- 另提供对 `Hashes` 的纯算术校验（`VerifyHashes`）：检查 Wagner 部分和与最终和，不绑定 challenge。
 - `go get github.com/cxio/equix` 即可使用（调用方需有 C 编译器）。
 - 与官方 C 在 v2 路径上行为一致。
 
@@ -39,7 +40,7 @@
 
 ```
 github.com/cxio/equix
-  equix.go              # 包级 Solve / Verify / *WithNonce / *WithHashes
+  equix.go              # 包级 Solve / Verify / *WithNonce / *WithHashes / VerifyHashes
   solution.go           # Solution、Hashes、Result 与编解码
   solver.go             # Solver
   verifier.go           # Verifier
@@ -83,7 +84,7 @@ type Result struct {
 }
 ```
 
-不给 `Hashes` 做二进制编解码。合法解上 `Hashes[0]+…+Hashes[7] ≡ 0 (mod 2^60)`（与 Equi-X 定义一致）；本包不在公开 API 里再验一次，由求解器与测试保证。
+不给 `Hashes` 做二进制编解码。合法解上 `Hashes[0]+…+Hashes[7] ≡ 0 (mod 2^60)`；公开校验见 `VerifyHashes`。
 
 哈希在 **同一次** `equix_solve` 之后、同一 `equix_ctx` 上立刻用 `hashwx_exec` 取出（challenge 已在 solve 里做成 HashWX 实例）。胶水 C 放在 `internal/native`（本仓库代码），读取官方内部 `context.h`，**不修改** `third_party/`。
 
@@ -135,6 +136,24 @@ func (s *Solver) SolveWithHashesAndNonce(challenge []byte, nonce uint64) ([]Resu
 ```
 
 不变量：`SolveWithHashes(ch)` 的 `.Solution` 序列与 `Solve(ch)` 相同；`SolveWithHashesAndNonce(ch, n)` 相对 `SolveWithNonce(ch, n)` 同样成立。`Verify` / `VerifyWithNonce` 仍只吃 `Solution`，不接收 `Hashes`。
+
+### 校验 Hashes
+
+对已有的 8 个 `uint64` 做与官方 `verify_internal` 相同的部分和 / 最终和检查，**不**调用 HashWX、**不**需要 challenge / nonce / context。纯 Go 实现。
+
+```go
+func VerifyHashes(h Hashes) error
+```
+
+检查顺序与 C 一致（掩码来自官方 `solver.h`）：
+
+1. `h[0]+h[1]`、`h[2]+h[3]`、`h[4]+h[5]`、`h[6]+h[7]` 各自低 15 位为 0（`EQUIX_STAGE1_MASK`），否则 `ErrPartialSum`
+2. 上述两对之和（0+1 与 2+3；4+5 与 6+7）各自低 30 位为 0（`EQUIX_STAGE2_MASK`），否则 `ErrPartialSum`
+3. 八数之和低 60 位为 0（`EQUIX_FULL_MASK`），否则 `ErrFinalSum`
+
+成功返回 `nil`。不做索引顺序检查，因此 **不会** 返回 `ErrOrder` / `ErrChallenge` / `ErrClosed`。
+
+这是合法解的**必要但非充分**条件：通过 `VerifyHashes` 只说明这 8 个数满足 Equi-X 的加法树约束，不证明它们来自某个 challenge 上的 HashWX。完整 puzzle 校验仍用 `Verify` / `VerifyWithNonce`。从 `SolveWithHashes*` 得到的 `Hashes` 应当通过本函数。
 
 ### 不导出
 
@@ -234,8 +253,9 @@ Linux / macOS / Windows × amd64 / arm64。Windows 使用 MinGW（或兼容的 g
 2. **nonce API**：同一 `(challenge, nonce)` 上 `SolveWithNonce` 的解能被 `VerifyWithNonce` 接受；只改 nonce 或只改 challenge 则失败。
 3. **拼接不变量**：若 `SolveWithNonce(ch, n)` 得到解 `s`，则 `Verify(append(ch, le64(n)...), s)` 成功，且 `Solve(append(ch, le64(n)...))` 的解集与前者一致（在同一 challenge 上）。
 4. **带哈希**：`SolveWithHashes` 与 `Solve` 的 `Solution` 序列一致；每个 `Result` 的 `Hashes[i]` 与 `Solution[i]` 对齐，且八个 `uint64` 之和的低 60 位为 0。`SolveWithHashesAndNonce` 对 `SolveWithNonce` 做同样断言。
-5. **边界**：空 challenge；合法的 0 解（不报错）；`Close` 后再用 → `ErrClosed`；`Close` 两次不 panic。
-6. 可选 `BenchmarkSolve` / `BenchmarkVerify`，不作为 CI 失败条件。
+5. **VerifyHashes**：`SolveWithHashes*` 得到的 `Hashes` 通过；打乱或改动某一个 `uint64` 后应得到 `ErrPartialSum` 或 `ErrFinalSum`（不出现 `ErrOrder`）。
+6. **边界**：空 challenge；合法的 0 解（不报错）；`Close` 后再用 → `ErrClosed`；`Close` 两次不 panic。
+7. 可选 `BenchmarkSolve` / `BenchmarkVerify`，不作为 CI 失败条件。
 
 ## 调用示例
 
@@ -253,8 +273,8 @@ sols, err = solver.SolveWithNonce(challenge, nonce)
 
 results, err := equix.SolveWithHashesAndNonce(challenge, nonce)
 for _, r := range results {
-    _ = r.Solution
-    _ = r.Hashes // [8]uint64，与 Solution 下标对齐
+    if err := equix.VerifyHashes(r.Hashes); err != nil { ... }
+    if err := equix.VerifyWithNonce(challenge, nonce, r.Solution); err != nil { ... }
 }
 ```
 
@@ -265,5 +285,6 @@ for _, r := range results {
 3. 公开类型、错误、无 nonce API。
 4. `SolveWithNonce` / `VerifyWithNonce`。
 5. `SolveWithHashes` / `SolveWithHashesAndNonce`（solve 后同 ctx 取 8 个哈希）。
-6. `sync.Pool` 包级函数。
-7. 测试与 README（含许可与上游 commit）。
+6. `VerifyHashes`（纯 Go，部分和 / 最终和）。
+7. `sync.Pool` 包级函数。
+8. 测试与 README（含许可与上游 commit）。
