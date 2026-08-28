@@ -1,7 +1,7 @@
 # Equi-X Cgo 封装
 
-日期：2026-08-28  
-模块：`github.com/cxio/equix`  
+日期：2026-08-28
+模块：`github.com/cxio/equix`
 状态：已批准设计，待实现
 
 把官方 Equi-X C 实现（`tevador/equix` 的 `equix_v2` 分支）封装成可被其它 Go 项目 `go get` 共享的包。算法走 Equi-X v2（HashWX），不暴露 v1。
@@ -12,6 +12,7 @@
 
 - 提供 `Solve` / `Verify`，以及可复用的 `Solver` / `Verifier`。
 - 另提供带 `uint64` nonce 的 API：nonce 由调用方固定，challenge 由外部变化；本包不在内部搜索或递增 nonce。
+- 另提供返回解与 8 个 HashWX 哈希值的 API（`SolveWithHashes` / `SolveWithHashesAndNonce`）。
 - `go get github.com/cxio/equix` 即可使用（调用方需有 C 编译器）。
 - 与官方 C 在 v2 路径上行为一致。
 
@@ -38,13 +39,13 @@
 
 ```
 github.com/cxio/equix
-  equix.go              # 包级 Solve / Verify / SolveWithNonce / VerifyWithNonce
-  solution.go           # Solution 与 16 字节编解码
+  equix.go              # 包级 Solve / Verify / *WithNonce / *WithHashes
+  solution.go           # Solution、Hashes、Result 与编解码
   solver.go             # Solver
   verifier.go           # Verifier
   errors.go             # 导出错误值
   equix_test.go
-  internal/native/      # 唯一 import "C" 的包：cgo 指令、stub .c、版本戳
+  internal/native/      # 唯一 import "C" 的包：cgo 指令、stub .c、取哈希胶水、版本戳
   third_party/equix/    # 上游快照（含 LICENSE）
   third_party/hashx/
   third_party/hashwx/
@@ -68,6 +69,23 @@ type Solution [8]uint16
 - `UnmarshalBinary([]byte) error`：恰好 16 字节，按上述规则解码；长度不对则报错。
 
 不提供十六进制辅助函数。
+
+### Hashes 与 Result
+
+每个解对应 8 个 HashWX 输出，与 `Solution` 下标一一对应：`Hashes[i] = HashWX(seed, Solution[i])`，类型为 `uint64`（HashWX 的完整 64 位结果，不是截断到 60 位）。
+
+```go
+type Hashes [8]uint64
+
+type Result struct {
+    Solution Solution
+    Hashes   Hashes
+}
+```
+
+不给 `Hashes` 做二进制编解码。合法解上 `Hashes[0]+…+Hashes[7] ≡ 0 (mod 2^60)`（与 Equi-X 定义一致）；本包不在公开 API 里再验一次，由求解器与测试保证。
+
+哈希在 **同一次** `equix_solve` 之后、同一 `equix_ctx` 上立刻用 `hashwx_exec` 取出（challenge 已在 solve 里做成 HashWX 实例）。胶水 C 放在 `internal/native`（本仓库代码），读取官方内部 `context.h`，**不修改** `third_party/`。
 
 ### 无 nonce
 
@@ -104,6 +122,20 @@ func (v *Verifier) VerifyWithNonce(challenge []byte, nonce uint64, sol Solution)
 
 无 nonce 的 `Solve`/`Verify` **不**附加这 8 字节。
 
+### 带哈希
+
+在对应的 `Solve` / `SolveWithNonce` 之上，额外返回每个解的 `Hashes`。索引解集与不带哈希的 API 相同。
+
+```go
+func SolveWithHashes(challenge []byte) ([]Result, error)
+func SolveWithHashesAndNonce(challenge []byte, nonce uint64) ([]Result, error)
+
+func (s *Solver) SolveWithHashes(challenge []byte) ([]Result, error)
+func (s *Solver) SolveWithHashesAndNonce(challenge []byte, nonce uint64) ([]Result, error)
+```
+
+不变量：`SolveWithHashes(ch)` 的 `.Solution` 序列与 `Solve(ch)` 相同；`SolveWithHashesAndNonce(ch, n)` 相对 `SolveWithNonce(ch, n)` 同样成立。`Verify` / `VerifyWithNonce` 仍只吃 `Solution`，不接收 `Hashes`。
+
 ### 不导出
 
 HashX、HashWX、`EQUIX_V2`、`COMPILE`、大页、v1、原始 `equix_ctx` 指针均不导出。
@@ -128,7 +160,7 @@ C 的 `equix_ctx` 非线程安全。
 - 同一个 `Solver` 或 `Verifier` 不得被多个 goroutine 同时使用。需要并行时各用各的实例。
 - 包级函数使用两个 `sync.Pool`：solver 池（~1.8 MiB/个）与 verifier 池。每次调用 `Get`，用完 `Put`。池中对象在进程内不 `equix_free`。
 - 池的 `New` 与 `NewSolver`/`NewVerifier` 使用同一套 JIT 回退。池分配失败时，该次包级调用返回错误（不缓存失败对象）。
-- `Close` 幂等；对 `nil` receiver 安全（不 panic）。Close 后再调用 `Solve`/`Verify` 返回 `ErrClosed`。
+- `Close` 幂等；对 `nil` receiver 安全（不 panic）。Close 后再调用 `Solve`/`Verify` 及其带 nonce、带哈希的变体，返回 `ErrClosed`。
 - 显式实例由调用方 `Close`；未 Close 会泄漏对应 C 堆（solver 约 1.8 MiB）。`runtime.SetFinalizer` 不作要求。
 
 ## 错误
@@ -159,7 +191,7 @@ C 的 `equix_ctx` 非线程安全。
 
 - `-std=c11`（HashWX 需要 C11）
 - `-O2`（可移植；不加 `-march=native`）
-- Include：`third_party/equix/include`、`third_party/hashx/include`、`third_party/hashx/src`、`third_party/hashwx/include`，以及 hashwx 的 `src`（若编译需要）
+- Include：`third_party/equix/include`、`third_party/equix/src`（胶水读取 `context.h`）、`third_party/hashx/include`、`third_party/hashx/src`、`third_party/hashwx/include`，以及 hashwx 的 `src`（若编译需要）
 
 **链接**
 
@@ -171,6 +203,10 @@ C 的 `equix_ctx` 非线程安全。
 - equix：`context.c`、`equix.c`、`solver.c`
 - hashx：`blake2.c`、`compiler.c`、`compiler_a64.c`、`compiler_x86.c`、`context.c`、`hashx.c`、`program.c`、`program_exec.c`、`siphash.c`、`siphash_rng.c`、`virtual_memory.c`
 - hashwx：`compiler.c`、`compiler_a64.c`、`compiler_wasm.c`、`compiler_x86.c`、`context.c`、`hashwx.c`、`program.c`、`program_exec.c`、`siphash_rng.c`、`virtual_memory.c`
+
+**本仓库胶水（非上游）**
+
+- `internal/native` 中一份 `.c`：在 `equix_solve` 之后对每个解调用 8 次 `hashwx_exec`，写入 `uint64[8]`。只用于 Equi-X v2 context。
 
 **版本戳**
 
@@ -197,8 +233,9 @@ Linux / macOS / Windows × amd64 / arm64。Windows 使用 MinGW（或兼容的 g
 1. **官方 `tests.c` 的 v2 路径**：`EQUIX_CTX_SOLVE | EQUIX_V2` 下对递增的 4 字节 nonce 求解（与官方测试相同的搜索方式仅用于造解，不是公开 API）；`Verify` 成功；交换相邻索引 → `ErrOrder`；按官方 `test_verify3`/`test_verify4` 的交换 → `ErrOrder` / `ErrPartialSum`；8 个索引的 40320 种排列中恰好一种 `Verify` 为 `nil`。
 2. **nonce API**：同一 `(challenge, nonce)` 上 `SolveWithNonce` 的解能被 `VerifyWithNonce` 接受；只改 nonce 或只改 challenge 则失败。
 3. **拼接不变量**：若 `SolveWithNonce(ch, n)` 得到解 `s`，则 `Verify(append(ch, le64(n)...), s)` 成功，且 `Solve(append(ch, le64(n)...))` 的解集与前者一致（在同一 challenge 上）。
-4. **边界**：空 challenge；合法的 0 解（不报错）；`Close` 后再用 → `ErrClosed`；`Close` 两次不 panic。
-5. 可选 `BenchmarkSolve` / `BenchmarkVerify`，不作为 CI 失败条件。
+4. **带哈希**：`SolveWithHashes` 与 `Solve` 的 `Solution` 序列一致；每个 `Result` 的 `Hashes[i]` 与 `Solution[i]` 对齐，且八个 `uint64` 之和的低 60 位为 0。`SolveWithHashesAndNonce` 对 `SolveWithNonce` 做同样断言。
+5. **边界**：空 challenge；合法的 0 解（不报错）；`Close` 后再用 → `ErrClosed`；`Close` 两次不 panic。
+6. 可选 `BenchmarkSolve` / `BenchmarkVerify`，不作为 CI 失败条件。
 
 ## 调用示例
 
@@ -213,6 +250,12 @@ solver, err := equix.NewSolver()
 if err != nil { ... }
 defer solver.Close()
 sols, err = solver.SolveWithNonce(challenge, nonce)
+
+results, err := equix.SolveWithHashesAndNonce(challenge, nonce)
+for _, r := range results {
+    _ = r.Solution
+    _ = r.Hashes // [8]uint64，与 Solution 下标对齐
+}
 ```
 
 ## 实现顺序
@@ -221,5 +264,6 @@ sols, err = solver.SolveWithNonce(challenge, nonce)
 2. `internal/native` 最小 C 绑定（alloc/free/solve/verify）。
 3. 公开类型、错误、无 nonce API。
 4. `SolveWithNonce` / `VerifyWithNonce`。
-5. `sync.Pool` 包级函数。
-6. 测试与 README（含许可与上游 commit）。
+5. `SolveWithHashes` / `SolveWithHashesAndNonce`（solve 后同 ctx 取 8 个哈希）。
+6. `sync.Pool` 包级函数。
+7. 测试与 README（含许可与上游 commit）。
