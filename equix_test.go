@@ -367,3 +367,89 @@ func TestVerifyWithHashesAndNonce(t *testing.T) {
 		t.Fatal("hash mismatch")
 	}
 }
+
+func TestVerifyTreeSwapOrder(t *testing.T) {
+	ch, sol := findSolution(t)
+	swapped := sol
+	for i := 0; i < 4; i++ {
+		swapped[i], swapped[i+4] = swapped[i+4], swapped[i]
+	}
+	if err := Verify(ch, swapped); !errors.Is(err, ErrOrder) {
+		t.Fatalf("got %v, want ErrOrder", err)
+	}
+}
+
+func TestOnlyOnePermutationValid(t *testing.T) {
+	if testing.Short() {
+		t.Skip("40320 verifies")
+	}
+	ch, sol := findSolution(t)
+	idx := sol
+	valid := 0
+	var permute func(int)
+	permute = func(start int) {
+		if start == 7 {
+			if Verify(ch, Solution(idx)) == nil {
+				valid++
+			}
+			return
+		}
+		for i := start; i < 8; i++ {
+			idx[start], idx[i] = idx[i], idx[start]
+			permute(start + 1)
+			idx[start], idx[i] = idx[i], idx[start]
+		}
+	}
+	permute(0)
+	if valid != 1 {
+		t.Fatalf("valid permutations=%d, want 1", valid)
+	}
+}
+
+func BenchmarkSolve(b *testing.B) {
+	s, err := NewSolver()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer s.Close()
+	ch := []byte("bench")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.Solve(ch); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkVerify(b *testing.B) {
+	ch, sol := func() ([]byte, Solution) {
+		s, err := NewSolver()
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer s.Close()
+		for n := 0; n < 32; n++ {
+			c := []byte{byte(n)}
+			sols, err := s.Solve(c)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if len(sols) > 0 {
+				return c, sols[0]
+			}
+		}
+		b.Fatal("no solution")
+		return nil, Solution{}
+	}()
+	v, err := NewVerifier()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer v.Close()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := v.Verify(ch, sol); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
