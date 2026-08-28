@@ -413,8 +413,8 @@ func BenchmarkSolve(b *testing.B) {
 	}
 	defer s.Close()
 	ch := []byte("bench")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		if _, err := s.Solve(ch); err != nil {
 			b.Fatal(err)
 		}
@@ -446,8 +446,8 @@ func BenchmarkVerify(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer v.Close()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		if err := v.Verify(ch, sol); err != nil {
 			b.Fatal(err)
 		}
