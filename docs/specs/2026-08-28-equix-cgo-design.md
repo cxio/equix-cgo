@@ -160,8 +160,6 @@ func (v *Verifier) VerifyWithHashesAndNonce(challenge []byte, nonce uint64, sol 
 - `ErrClosed` 或分配失败：返回零值 `Hashes` 和错误。
 - `Hashes[i] = HashWX(seed, sol[i])`，与 `SolveWithHashes` 对同一 `(challenge, sol)` 给出的哈希一致。
 
-无 nonce 的 `Verify` **不**返回哈希，行为不变。
-
 ### 校验 Hashes
 
 对已有的 8 个 `uint64` 做与官方 `verify_internal` 相同的部分和 / 最终和检查，**不**调用 HashWX、**不**需要 challenge / nonce / context。纯 Go 实现。
