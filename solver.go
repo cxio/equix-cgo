@@ -3,7 +3,7 @@ package equix
 import (
 	"errors"
 
-	"github.com/cxio/equix/internal/native"
+	"github.com/cxio/equix-cgo/internal/native"
 )
 
 // Solver 表示一个可复用的 Equi-X 求解上下文。

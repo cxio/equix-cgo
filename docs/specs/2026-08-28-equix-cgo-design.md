@@ -1,7 +1,7 @@
 # Equi-X Cgo 封装
 
 日期：2026-08-28
-模块：`github.com/cxio/equix`
+模块：`github.com/cxio/equix-cgo`
 状态：已批准设计，待实现
 
 把官方 Equi-X C 实现（`tevador/equix` 的 `equix_v2` 分支）封装成可被其它 Go 项目 `go get` 共享的包。算法走 Equi-X v2（HashWX），不暴露 v1。
@@ -15,7 +15,7 @@
 - 另提供返回解与 8 个 HashWX 哈希值的 API（`SolveWithHashes` / `SolveWithHashesAndNonce`）。
 - `VerifyWithHashes` / `VerifyWithHashesAndNonce` 在校验的同时返回该解的 8 个哈希。
 - 另提供对 `Hashes` 的纯算术校验（`VerifyHashes`）：检查 Wagner 部分和与最终和，不绑定 challenge。
-- `go get github.com/cxio/equix` 即可使用（调用方需有 C 编译器）。
+- `go get github.com/cxio/equix-cgo` 即可使用（调用方需有 C 编译器）。
 - 与官方 C 在 v2 路径上行为一致。
 
 **非目标**
@@ -40,7 +40,7 @@
 ## 目录结构
 
 ```
-github.com/cxio/equix
+github.com/cxio/equix-cgo
   equix.go              # 包级 Solve/Verify 及 WithNonce、WithHashes 变体
   solution.go           # Solution、Hashes、Result 与编解码
   solver.go             # Solver
