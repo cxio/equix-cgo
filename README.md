@@ -12,6 +12,7 @@ if err != nil {
     return err
 }
 for _, sol := range sols {
+    // VerifyWithNonce 或 VerifyWithHashesAndNonce 效果相同
     h, err := equix.VerifyWithHashesAndNonce(challenge, nonce, sol)
     if err != nil {
         return err
