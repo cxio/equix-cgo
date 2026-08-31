@@ -7,10 +7,9 @@ import (
 	"github.com/cxio/equix-cgo"
 )
 
-// TargetBits 设定为 5 bits，
-// 期望尝试约 32 次求解，耗时约 80ms~100ms
-// 注：暂不支持定制位数/难度。
-const TargetBits = 5
+// TargetBits 设定为 4 bits，
+// 期望尝试求解约 16 个，耗时约 235ms（Mac mini M4 Pro）。
+const TargetBits = 4
 
 // PuzzleSolution 包含成功匹配难度的 Nonce 和对应的 Equi-X 解。
 // 其中 Nonce 从 13 开始，每次步进值 9973：一个素数，主要考虑二进制离散分布。
@@ -55,7 +54,7 @@ func computeCombinedHash(challenge []byte, nonce uint64, sol equix.Solution) ([]
 	return h.Sum(nil), nil
 }
 
-// SolvePuzzle 客户端求解函数 (平均耗时 ~80ms)
+// SolvePuzzle 客户端求解函数 (平均耗时 ~240ms)
 func SolvePuzzle(challenge []byte) (*PuzzleSolution, error) {
 	var nonce uint64 = 13
 
@@ -85,7 +84,7 @@ func SolvePuzzle(challenge []byte) (*PuzzleSolution, error) {
 	}
 }
 
-// VerifyPuzzle 服务端验证函数 (验证仅需 ~12us + SHA256 开销)
+// VerifyPuzzle 服务端验证函数 (验证仅需 ~14us + SHA256 开销)
 func VerifyPuzzle(challenge []byte, puzzleSol *PuzzleSolution) bool {
 	// 1. 优先校验外层难度前缀 (快速过滤无效提交)
 	combinedHash, err := computeCombinedHash(challenge, puzzleSol.Nonce, puzzleSol.Solution)
