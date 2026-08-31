@@ -23,6 +23,37 @@ for _, sol := range sols {
 
 需要 `CGO_ENABLED=1` 和 C 编译器（gcc/clang；Windows 用 MinGW）。不支持 `CGO_ENABLED=0`。
 
+## 性能概览
+
+在 Apple M4 Pro（arm64）上，用以下命令测得的典型结果：
+
+```bash
+go test -bench 'Benchmark(Solve|Verify)$' -benchmem
+```
+
+输出：
+
+```text
+goos: darwin
+goarch: arm64
+pkg: github.com/cxio/equix-cgo
+cpu: Apple M4 Pro
+BenchmarkSolve-14             42          27652387 ns/op             240 B/op
+      4 allocs/op
+BenchmarkVerify-14        181662              6240 ns/op              32 B/op
+      2 allocs/op
+PASS
+ok      github.com/cxio/equix-cgo       3.659s
+```
+
+这意味着：
+
+- `Solve` 约为 27.65 ms/op
+- `Verify` 约为 6.24 µs/op
+- 在当前环境中，`Solve` 的成本大约是 `Verify` 的 4,400 倍
+
+因此，`Verify` 对于“已知解”的重复校验非常轻量；求解过程仍然是昂贵的搜索/构造步骤，属于典型的 PoW 级工作量。
+
 钉死的上游 commit：
 
 - equix `350a85dedda1344637dac09a1de786ee63a5fb01`（`equix_v2`）

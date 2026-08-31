@@ -3,6 +3,7 @@ package equix
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func findSolution(t *testing.T) (challenge []byte, sol Solution) {
@@ -333,6 +334,58 @@ func TestPackageLevelSolveVerify(t *testing.T) {
 	if _, err := SolveWithNonce([]byte("p"), 0); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestSolveAndVerifyCost(t *testing.T) {
+	s, err := NewSolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	v, err := NewVerifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+
+	var ch []byte
+	var sol Solution
+	for n := 0; n < 64; n++ {
+		ch = []byte{byte(n)}
+		sols, err := s.Solve(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sols) > 0 {
+			sol = sols[0]
+			break
+		}
+	}
+	if sol == (Solution{}) {
+		t.Fatal("no solution found")
+	}
+
+	const rounds = 20
+	solveTotal := time.Duration(0)
+	verifyTotal := time.Duration(0)
+	for i := 0; i < rounds; i++ {
+		start := time.Now()
+		_, err := s.Solve(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		solveTotal += time.Since(start)
+
+		start = time.Now()
+		if err := v.Verify(ch, sol); err != nil {
+			t.Fatal(err)
+		}
+		verifyTotal += time.Since(start)
+	}
+
+	t.Logf("Solve avg=%s over %d runs (total=%s)", solveTotal/rounds, rounds, solveTotal)
+	t.Logf("Verify avg=%s over %d runs (total=%s)", verifyTotal/rounds, rounds, verifyTotal)
 }
 
 func TestVerifyWithHashesAndNonce(t *testing.T) {
