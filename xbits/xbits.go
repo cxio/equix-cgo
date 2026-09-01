@@ -11,9 +11,8 @@ import (
 // 期望尝试求解约 16 个，耗时约 235ms（Mac mini M4 Pro）。
 const TargetBits = 4
 
-// PuzzleSolution 包含成功匹配难度的 Nonce 和对应的 Equi-X 解。
-// 其中 Nonce 从 13 开始，每次步进值 9973：一个素数，主要考虑二进制离散分布。
-type PuzzleSolution struct {
+// Solution 包含成功匹配难度的 Nonce 和对应的 Equi-X 解。
+type Solution struct {
 	Nonce    uint64
 	Solution equix.Solution
 }
@@ -21,7 +20,7 @@ type PuzzleSolution struct {
 // checkDifficulty 检查 SHA-256 哈希值的前 N 个 bit 是否全为 0
 func checkDifficulty(hash []byte, bits int) bool {
 	fullBytes := bits / 8
-	for i := 0; i < fullBytes; i++ {
+	for i := range fullBytes {
 		if hash[i] != 0 {
 			return false
 		}
@@ -54,10 +53,11 @@ func computeCombinedHash(challenge []byte, nonce uint64, sol equix.Solution) ([]
 	return h.Sum(nil), nil
 }
 
-// SolvePuzzle 客户端求解函数 (平均耗时 ~240ms)
-func SolvePuzzle(challenge []byte) (*PuzzleSolution, error) {
-	var nonce uint64 = 13
-
+// Solve 客户端求解函数 (平均耗时 ~240ms)
+// nonce 指定起始 Nonce 值，从该值起每次步进 0x26f5（小素数，利于二进制离散），
+// 最终返回的 Nonce 可能不同。多 worker 并行分片时，各起点应避免相差 0x26f5 的整数倍，
+// 否则搜索序列完全重叠。
+func Solve(challenge []byte, nonce uint64) (*Solution, error) {
 	for {
 		// 1. 调用 Go 封装接口寻找当前 Nonce 下的 Equi-X 解
 		sols, err := equix.SolveWithNonce(challenge, nonce)
@@ -73,7 +73,7 @@ func SolvePuzzle(challenge []byte) (*PuzzleSolution, error) {
 			}
 
 			if checkDifficulty(combinedHash, TargetBits) {
-				return &PuzzleSolution{
+				return &Solution{
 					Nonce:    nonce,
 					Solution: sol,
 				}, nil
@@ -84,15 +84,15 @@ func SolvePuzzle(challenge []byte) (*PuzzleSolution, error) {
 	}
 }
 
-// VerifyPuzzle 服务端验证函数 (验证仅需 ~14us + SHA256 开销)
-func VerifyPuzzle(challenge []byte, puzzleSol *PuzzleSolution) bool {
+// Verify 服务端验证函数 (验证仅需 ~14us + SHA256 开销)
+func Verify(challenge []byte, sol *Solution) bool {
 	// 1. 优先校验外层难度前缀 (快速过滤无效提交)
-	combinedHash, err := computeCombinedHash(challenge, puzzleSol.Nonce, puzzleSol.Solution)
+	combinedHash, err := computeCombinedHash(challenge, sol.Nonce, sol.Solution)
 	if err != nil || !checkDifficulty(combinedHash, TargetBits) {
 		return false
 	}
 
 	// 2. 校验核心 Equi-X 解结构
-	err = equix.VerifyWithNonce(challenge, puzzleSol.Nonce, puzzleSol.Solution)
+	err = equix.VerifyWithNonce(challenge, sol.Nonce, sol.Solution)
 	return err == nil
 }

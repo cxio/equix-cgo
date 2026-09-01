@@ -45,14 +45,15 @@ func main() {
     challenge := []byte("equix-cgo/ratiox cost")
     target := ratio.TargetFromProbability(0.1)
 
-    sol, err := ratio.SolvePuzzle(challenge, target)
+    // 用一个小素数作为 nonce 起点值
+    sol, err := ratio.Solve(challenge, target, 13)
     if err != nil {
         panic(err)
     }
 
     fmt.Printf("Found solution at nonce=%d\n", sol.Nonce)
 
-    ok := ratio.VerifyPuzzle(challenge, target, sol)
+    ok := ratio.Verify(challenge, target, sol)
     fmt.Printf("Verification result: %v\n", ok)
 }
 ```
@@ -61,7 +62,7 @@ func main() {
 
 求解时：
 
-1. 设定 nonce（从 `13` 开始，每次增加 `0x26f5`）
+1. 从传入的 nonce 起点开始，每次增加 `0x26f5`（9973，素数，利于二进制离散）
 2. 调用 `equix.SolveWithNonce(challenge, nonce)`
 3. 对每个解计算 `SHA256(challenge || nonce || solution)` 的前 8 字节為 `uint64`
 4. 若值 `<= target`，返回该解
@@ -73,7 +74,7 @@ func main() {
 
 ## 实测数据
 
-来自 `go test ./ratio -run TestSolvePuzzleCost -v -count=1` 的真实输出：
+来自 `go test ./ratio -run TestSolveCost -v -count=1` 的真实输出：
 
 ```text
 P=10.0% (expected≈10.000000 tries)

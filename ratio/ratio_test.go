@@ -24,59 +24,59 @@ func TestTargetFromProbability(t *testing.T) {
 	}
 
 	got := TargetFromProbability(testProbability)
-	want := uint64(float64(math.MaxUint64) * testProbability)
+	want := Target(float64(math.MaxUint64) * testProbability)
 	if got != want {
 		t.Fatalf("P=%.3f: got %d, want %d", testProbability, got, want)
 	}
 }
 
-func TestSolveAndVerifyPuzzle(t *testing.T) {
+func TestSolveAndVerify(t *testing.T) {
 	challenge := []byte("equix-cgo/ratiox cost")
 	target := TargetFromProbability(testProbability)
 
-	sol, err := SolvePuzzle(challenge, target)
+	sol, err := Solve(challenge, target, nonceStart)
 	if err != nil {
-		t.Fatalf("SolvePuzzle: %v", err)
+		t.Fatalf("Solve: %v", err)
 	}
 	if sol == nil {
-		t.Fatal("SolvePuzzle returned nil solution")
+		t.Fatal("Solve returned nil solution")
 	}
-	if !VerifyPuzzle(challenge, target, sol) {
-		t.Fatal("VerifyPuzzle rejected a freshly solved puzzle")
+	if !Verify(challenge, target, sol) {
+		t.Fatal("Verify rejected a freshly solved puzzle")
 	}
 
 	// 错误 nonce 必须失败。
 	bad := *sol
 	bad.Nonce++
-	if VerifyPuzzle(challenge, target, &bad) {
-		t.Fatal("VerifyPuzzle accepted a mutated nonce")
+	if Verify(challenge, target, &bad) {
+		t.Fatal("Verify accepted a mutated nonce")
 	}
 }
 
-func TestSolvePuzzleCost(t *testing.T) {
+func TestSolveCost(t *testing.T) {
 	target := TargetFromProbability(testProbability)
 
 	solveDurations := make([]time.Duration, 0, costSamples)
 	verifyDurations := make([]time.Duration, 0, costSamples)
 	nonceTries := make([]uint64, 0, costSamples)
 
-	for i := 0; i < costSamples; i++ {
+	for i := range costSamples {
 		challenge := make([]byte, 16)
 		binary.LittleEndian.PutUint64(challenge, uint64(i+1))
 		binary.LittleEndian.PutUint64(challenge[8:], 0x7821c0de)
 
 		start := time.Now()
-		sol, err := SolvePuzzle(challenge, target)
+		sol, err := Solve(challenge, target, nonceStart)
 		elapsed := time.Since(start)
 		if err != nil {
-			t.Fatalf("sample %d SolvePuzzle: %v", i, err)
+			t.Fatalf("sample %d Solve: %v", i, err)
 		}
 
 		vStart := time.Now()
-		ok := VerifyPuzzle(challenge, target, sol)
+		ok := Verify(challenge, target, sol)
 		vElapsed := time.Since(vStart)
 		if !ok {
-			t.Fatalf("sample %d VerifyPuzzle failed", i)
+			t.Fatalf("sample %d Verify failed", i)
 		}
 
 		// nonce 从 13 起步，步进 0x26f5，用尝试次数衡量 Equi-X 求解轮数。

@@ -2,11 +2,11 @@
 
 哈希前缀难度封装。在 Equi-X 解外再套一层 SHA-256 前缀零 bit 门槛，客户端搜 nonce，服务端先滤难度再验 Equi-X。
 
-默认 `TargetBits = 4`，期望约 16 次求解（`2^4`）。Nonce 从 `13` 起，每次加 `0x26f5`（9973，素数，利于二进制离散）。
+默认 `TargetBits = 4`，期望约 16 次求解（`2^4`）。Nonce 起点由调用方传入（示例取小素数 `13`），每次步进 `0x26f5`（9973，素数，利于二进制离散）。
 
 ## 实测
 
-Mac mini M4 Pro 14-core（`TargetBits=4`）：
+Mac mini M4 Pro（`TargetBits=4`）：
 
 ```text
 solve  min=55.293958ms avg=235.674078ms max=627.717458ms
@@ -29,7 +29,9 @@ func main() {
 	challenge := []byte("example_challenge_string")
 
 	fmt.Println("Solving puzzle...")
-	sol, err := xbits.SolvePuzzle(challenge)
+
+	// 用小素数 13 作为 nonce 起点值
+	sol, err := xbits.Solve(challenge, 13)
 	if err != nil {
 		panic(err)
 	}
@@ -37,12 +39,12 @@ func main() {
 	fmt.Printf("Found Solution! Nonce: %d\n", sol.Nonce)
 
 	// 服务端快速验证
-	valid := xbits.VerifyPuzzle(challenge, sol)
+	valid := xbits.Verify(challenge, sol)
 	fmt.Printf("Verification result: %v\n", valid)
 }
 ```
 
-`PuzzleSolution` 含匹配难度的 `Nonce` 和对应 Equi-X `Solution`。
+`Solution` 含匹配难度的 `Nonce` 和对应 Equi-X `Solution`。
 
 ## 内部计算
 

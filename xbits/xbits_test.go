@@ -7,56 +7,62 @@ import (
 	"time"
 )
 
-func TestSolveAndVerifyPuzzle(t *testing.T) {
+const (
+	// 起始 nonce，取小素数。
+	nonceStart = 13
+	nonceStep  = 0x26f5
+)
+
+func TestSolveAndVerify(t *testing.T) {
 	challenge := []byte("equix-cgo/xbits cost")
 
-	sol, err := SolvePuzzle(challenge)
+	sol, err := Solve(challenge, nonceStart)
 	if err != nil {
-		t.Fatalf("SolvePuzzle: %v", err)
+		t.Fatalf("Solve: %v", err)
 	}
 	if sol == nil {
-		t.Fatal("SolvePuzzle returned nil solution")
+		t.Fatal("Solve returned nil solution")
 	}
-	if !VerifyPuzzle(challenge, sol) {
-		t.Fatal("VerifyPuzzle rejected a freshly solved puzzle")
+	if !Verify(challenge, sol) {
+		t.Fatal("Verify rejected a freshly solved puzzle")
 	}
 
 	// 错误 nonce 必须失败。
 	bad := *sol
 	bad.Nonce++
-	if VerifyPuzzle(challenge, &bad) {
-		t.Fatal("VerifyPuzzle accepted a mutated nonce")
+	if Verify(challenge, &bad) {
+		t.Fatal("Verify accepted a mutated nonce")
 	}
 }
 
-func TestSolvePuzzleCost(t *testing.T) {
+func TestSolveCost(t *testing.T) {
 	const samples = 8
 
 	solveDurations := make([]time.Duration, 0, samples)
 	verifyDurations := make([]time.Duration, 0, samples)
 	nonceTries := make([]uint64, 0, samples)
 
-	for i := 0; i < samples; i++ {
+	for i := range samples {
 		challenge := make([]byte, 16)
 		binary.LittleEndian.PutUint64(challenge, uint64(i+1))
 		binary.LittleEndian.PutUint64(challenge[8:], 0x7821c0de)
 
 		start := time.Now()
-		sol, err := SolvePuzzle(challenge)
+		sol, err := Solve(challenge, nonceStart)
 		elapsed := time.Since(start)
 		if err != nil {
-			t.Fatalf("sample %d SolvePuzzle: %v", i, err)
+			t.Fatalf("sample %d Solve: %v", i, err)
 		}
 
 		vStart := time.Now()
-		ok := VerifyPuzzle(challenge, sol)
+		ok := Verify(challenge, sol)
 		vElapsed := time.Since(vStart)
 		if !ok {
-			t.Fatalf("sample %d VerifyPuzzle failed", i)
+			t.Fatalf("sample %d Verify failed", i)
 		}
 
-		// nonce 从 13 起步，步进 0x26f5，用尝试次数衡量 Equi-X 求解轮数。
-		tries := (sol.Nonce-13)/0x26f5 + 1
+		// 尝试次数衡量 Equi-X 求解轮数。
+		tries := (sol.Nonce-nonceStart)/nonceStep + 1
 		solveDurations = append(solveDurations, elapsed)
 		verifyDurations = append(verifyDurations, vElapsed)
 		nonceTries = append(nonceTries, tries)
@@ -76,16 +82,16 @@ func TestSolvePuzzleCost(t *testing.T) {
 
 func TestCheckDifficulty(t *testing.T) {
 	hash := make([]byte, 32)
-	if !checkDifficulty(hash, 5) {
-		t.Fatal("all-zero hash should pass 5-bit target")
+	if !checkDifficulty(hash, 4) {
+		t.Fatal("all-zero hash should pass 4-bit target")
 	}
-	hash[0] = 0b00001000
-	if checkDifficulty(hash, 5) {
-		t.Fatal("bit 5 set should fail 5-bit target")
+	hash[0] = 0b00010000
+	if checkDifficulty(hash, 4) {
+		t.Fatal("bit 4 set should fail 4-bit target")
 	}
-	hash[0] = 0b00000111
-	if !checkDifficulty(hash, 5) {
-		t.Fatal("only lower 3 bits set should still pass 5-bit target")
+	hash[0] = 0b00001111
+	if !checkDifficulty(hash, 4) {
+		t.Fatal("lower 4 bits set should still pass 4-bit target")
 	}
 }
 
@@ -145,10 +151,10 @@ func avgUint64(vs []uint64) float64 {
 	return float64(sum) / float64(len(vs))
 }
 
-func BenchmarkSolvePuzzle(b *testing.B) {
+func BenchmarkSolve(b *testing.B) {
 	for i := 0; b.Loop(); i++ {
 		challenge := fmt.Appendf(nil, "bench-%d", i)
-		if _, err := SolvePuzzle(challenge); err != nil {
+		if _, err := Solve(challenge, nonceStart); err != nil {
 			b.Fatal(err)
 		}
 	}
