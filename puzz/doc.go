@@ -1,4 +1,4 @@
-// Package puzzle 在 Equi-X 求解之上叠加一层可调难度的 SHA-256 门槛，
+// Package puzz 在 Equi-X 求解之上叠加一层可调难度的 SHA-256 门槛，
 // 提供“客户端搜索、服务端验证”的 PoW 谜题封装。
 //
 // 难度由 [Threshold] 表达：对每个候选解计算

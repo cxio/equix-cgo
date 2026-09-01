@@ -23,8 +23,8 @@ const nonceStep uint64 = 0x26f5
 type Threshold uint64
 
 // FromProbability 返回使每个候选解命中概率约为 p 的阈值。
-// 命中概率的精确值为 (th+1)/2^64，与 p 的偏差不超过 2^-64。
-// p 必须落在 (0, 1] 区间且不小于 2^-64（低于该值无法用 64 位阈值表达，
+// 命中概率的精确值为 (th+1)/2^64，与 p 的偏差不超过 2^-53（IEEE double 舍入）。
+// p 必须落在 (0, 1] 区间且不小于 2^-53（低于该值无法用 64 位阈值表达，
 // 会退化为实际不可达的 0），NaN 或越界返回错误。
 func FromProbability(p float64) (Threshold, error) {
 	if math.IsNaN(p) || p <= 0 || p > 1 {
