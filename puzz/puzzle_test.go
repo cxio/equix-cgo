@@ -178,6 +178,77 @@ func TestSolveAndVerify(t *testing.T) {
 	}
 }
 
+func TestSolveWithHashes(t *testing.T) {
+	challenge := []byte("equix-cgo/puzzle hashes")
+	th, err := FromProbability(0.1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sol, h, err := SolveWithHashes(challenge, th, nonceStart)
+	if err != nil {
+		t.Fatalf("SolveWithHashes: %v", err)
+	}
+	if sol == nil {
+		t.Fatal("SolveWithHashes returned nil solution")
+	}
+	if !Verify(challenge, th, sol) {
+		t.Fatal("Verify rejected a freshly solved puzzle")
+	}
+	if err := equix.VerifyHashes(h); err != nil {
+		t.Fatalf("VerifyHashes: %v", err)
+	}
+	want, err := equix.VerifyWithHashesAndNonce(challenge, sol.Nonce, sol.Solution)
+	if err != nil {
+		t.Fatalf("VerifyWithHashesAndNonce: %v", err)
+	}
+	if h != want {
+		t.Fatalf("hashes mismatch: got %v want %v", h, want)
+	}
+}
+
+func TestSolveWithHashesMatchesSolve(t *testing.T) {
+	challenge := []byte("equix-cgo/puzzle hashes match")
+	th, err := FromBits(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want, err := Solve(challenge, th, nonceStart)
+	if err != nil {
+		t.Fatalf("Solve: %v", err)
+	}
+	got, _, err := SolveWithHashes(challenge, th, nonceStart)
+	if err != nil {
+		t.Fatalf("SolveWithHashes: %v", err)
+	}
+	if got == nil || want == nil {
+		t.Fatal("expected non-nil solutions")
+	}
+	if *got != *want {
+		t.Fatalf("SolveWithHashes solution %+v != Solve %+v", *got, *want)
+	}
+}
+
+func TestSolveContextWithHashesCanceled(t *testing.T) {
+	th, err := FromBits(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	sol, h, err := SolveContextWithHashes(ctx, []byte("equix-cgo/puzzle hashes cancel"), th, nonceStart)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if sol != nil {
+		t.Fatalf("solution = %+v, want nil", sol)
+	}
+	if h != (equix.Hashes{}) {
+		t.Fatalf("hashes = %v, want zero", h)
+	}
+}
+
 func TestSolveContext(t *testing.T) {
 	challenge := []byte("equix-cgo/puzzle cancel")
 

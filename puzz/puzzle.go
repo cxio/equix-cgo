@@ -133,6 +133,33 @@ func SolveContext(ctx context.Context, challenge []byte, th Threshold, nonce uin
 	}
 }
 
+// SolveWithHashes 与 Solve 相同，额外返回命中解对应的 8 个 HashWX 哈希。
+func SolveWithHashes(challenge []byte, th Threshold, nonce uint64) (*Solution, equix.Hashes, error) {
+	return SolveContextWithHashes(context.Background(), challenge, th, nonce)
+}
+
+// SolveContextWithHashes 是带取消的 SolveWithHashes。取消与错误时解为 nil、哈希为零值。
+func SolveContextWithHashes(ctx context.Context, challenge []byte, th Threshold, nonce uint64) (*Solution, equix.Hashes, error) {
+	var hash [32]byte
+	var zero equix.Hashes
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, zero, err
+		}
+		results, err := equix.SolveWithHashesAndNonce(challenge, nonce)
+		if err != nil {
+			return nil, zero, err
+		}
+		for _, r := range results {
+			combinedHash(&hash, challenge, nonce, r.Solution)
+			if th.hit(&hash) {
+				return &Solution{Nonce: nonce, Solution: r.Solution}, r.Hashes, nil
+			}
+		}
+		nonce += nonceStep
+	}
+}
+
 // Verify 校验提交的解：先做廉价的阈值比对过滤（一次 SHA-256，约百纳秒），
 // 通过后再做完整的 Equi-X 结构校验（约 10µs 量级），无效提交的平均验证
 // 成本因此接近一次哈希。sol 为 nil 或任一检查不通过时返回 false。
