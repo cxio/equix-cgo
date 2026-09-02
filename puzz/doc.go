@@ -16,6 +16,10 @@
 // [Verify] 先做廉价的哈希阈值比对（约百纳秒），通过后再做完整的 Equi-X
 // 结构校验（约 10µs 量级），适合服务端对不可信提交的快速过滤。
 //
+// 需要同时得到解对应的 8 个 HashWX 哈希时，使用 [SolveWithHashes]、
+// [SolveContextWithHashes] 与 [VerifyWithHashes]。哈希类型为
+// [github.com/cxio/equix-cgo.Hashes]，作为多返回值，不进入 Solution 编码。
+//
 // 命中期望需要约 1/p（或 2^bits）个 Equi-X 候选解；Equi-X 每个 nonce 平均
 // 产出约 1.7 个候选解，因此折合约 0.6/p（或 2^bits/1.7）轮 nonce 尝试。
 //

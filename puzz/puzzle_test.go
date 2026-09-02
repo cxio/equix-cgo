@@ -249,6 +249,81 @@ func TestSolveContextWithHashesCanceled(t *testing.T) {
 	}
 }
 
+func TestVerifyWithHashes(t *testing.T) {
+	challenge := []byte("equix-cgo/puzzle verify hashes")
+	th, err := FromProbability(0.1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sol, want, err := SolveWithHashes(challenge, th, nonceStart)
+	if err != nil {
+		t.Fatalf("SolveWithHashes: %v", err)
+	}
+
+	got, ok := VerifyWithHashes(challenge, th, sol)
+	if !ok {
+		t.Fatal("VerifyWithHashes rejected a freshly solved puzzle")
+	}
+	if got != want {
+		t.Fatalf("hashes mismatch: got %v want %v", got, want)
+	}
+
+	// 错误 nonce / 篡改解 / 错误 challenge 必须失败。
+	badNonce := *sol
+	badNonce.Nonce++
+	if _, ok := VerifyWithHashes(challenge, th, &badNonce); ok {
+		t.Fatal("VerifyWithHashes accepted a mutated nonce")
+	}
+	tampered := *sol
+	tampered.Solution[0] ^= 1
+	if _, ok := VerifyWithHashes(challenge, th, &tampered); ok {
+		t.Fatal("VerifyWithHashes accepted a tampered solution")
+	}
+	if _, ok := VerifyWithHashes([]byte("equix-cgo/puzzle verify hashes!"), th, sol); ok {
+		t.Fatal("VerifyWithHashes accepted a mismatched challenge")
+	}
+
+	// nil 提交必须失败而非 panic，且哈希为零值。
+	h, ok := VerifyWithHashes(challenge, th, nil)
+	if ok {
+		t.Fatal("VerifyWithHashes accepted a nil solution")
+	}
+	if h != (equix.Hashes{}) {
+		t.Fatalf("nil solution hashes = %v, want zero", h)
+	}
+}
+
+func TestVerifyWithHashesStillReturnsOnOrder(t *testing.T) {
+	challenge := []byte("equix-cgo/puzzle verify hashes order")
+	th, err := FromBits(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sol, _, err := SolveWithHashes(challenge, th, nonceStart)
+	if err != nil {
+		t.Fatalf("SolveWithHashes: %v", err)
+	}
+
+	bad := *sol
+	bad.Solution[0], bad.Solution[1] = bad.Solution[1], bad.Solution[0]
+
+	got, ok := VerifyWithHashes(challenge, th, &bad)
+	if ok {
+		t.Fatal("VerifyWithHashes accepted a swapped-index solution")
+	}
+	want, err := equix.VerifyWithHashesAndNonce(challenge, bad.Nonce, bad.Solution)
+	if !errors.Is(err, equix.ErrOrder) {
+		t.Fatalf("equix.VerifyWithHashesAndNonce: %v, want ErrOrder", err)
+	}
+	if got != want {
+		t.Fatalf("hashes mismatch: got %v want %v", got, want)
+	}
+	if got == (equix.Hashes{}) {
+		t.Fatal("hashes must still be populated")
+	}
+}
+
 func TestSolveContext(t *testing.T) {
 	challenge := []byte("equix-cgo/puzzle cancel")
 

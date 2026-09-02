@@ -174,3 +174,20 @@ func Verify(challenge []byte, th Threshold, sol *Solution) bool {
 	}
 	return equix.VerifyWithNonce(challenge, sol.Nonce, sol.Solution) == nil
 }
+
+// VerifyWithHashes 与 Verify 相同，额外返回该解的 8 个 HashWX 哈希。
+// 阈值未过或 sol 为 nil 时返回零值哈希和 false，不调用 Equi-X。
+// 阈值通过但 Equi-X 失败时仍返回已算出的哈希和 false。
+func VerifyWithHashes(challenge []byte, th Threshold, sol *Solution) (equix.Hashes, bool) {
+	var zero equix.Hashes
+	if sol == nil {
+		return zero, false
+	}
+	var hash [32]byte
+	combinedHash(&hash, challenge, sol.Nonce, sol.Solution)
+	if !th.hit(&hash) {
+		return zero, false
+	}
+	h, err := equix.VerifyWithHashesAndNonce(challenge, sol.Nonce, sol.Solution)
+	return h, err == nil
+}

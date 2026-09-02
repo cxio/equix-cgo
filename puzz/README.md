@@ -79,6 +79,22 @@ nonce 步进为素数 `0x26f5`（9973），避免多 worker 的搜索序列与 2
 
 `Verify` 先做阈值比对（一次 SHA-256，约百纳秒），通过后再做完整的 Equi-X 结构校验（约 10µs 量级）。无效提交的平均验证成本接近一次哈希，适合服务端直接面对不可信输入。`sol` 为 `nil` 时返回 `false`，不会 panic。
 
+## 带 HashWX 哈希
+
+需要解对应的 8 个 HashWX 输出时，使用 `SolveWithHashes` / `VerifyWithHashes`。哈希类型为 `equix.Hashes`，作为多返回值，不进入 `Solution` 的 24 字节编码。
+
+```go
+sol, h, err := puzz.SolveWithHashes(challenge, th, 13)
+if err != nil {
+    panic(err)
+}
+got, ok := puzz.VerifyWithHashes(challenge, th, sol)
+// ok == true 且 got == h；equix.VerifyHashes(h) == nil
+_ = got
+```
+
+`VerifyWithHashes` 与 `Verify` 一样先做 SHA-256 门槛：未过或 `sol == nil` 时返回零值哈希和 `false`，不计算 HashWX。门槛通过但 Equi-X 结构校验失败时，仍返回已算出的哈希和 `false`。需要限时或取消时使用 `SolveContextWithHashes`。
+
 ## 实测
 
 Mac mini M4 Pro（`DefaultBits=4`），来自 `go test ./puzz -run TestSolveCost -v -count=1`：
