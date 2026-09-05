@@ -7,10 +7,10 @@
 对每个候选解计算：
 
 ```text
-SHA256(challenge || nonce || solution)[:8] -> 大端 uint64
+SHA256(seed || solution)[:8] -> 大端 uint64
 ```
 
-该数值 `<= Threshold` 即命中。两种构造方式对应同一机制：
+该数值 `<= Threshold` 即命中。nonce 搜索路径的 seed 为 `challenge || little-endian(nonce)`，因此哈希输入等价于 `challenge || nonce || solution`。两种构造方式对应同一机制：
 
 ```go
 // 按期望命中概率：约 10% 的候选解命中
@@ -52,6 +52,36 @@ func main() {
 	fmt.Printf("Verification result: %v\n", puzz.Verify(challenge, th, sol))
 }
 ```
+
+## 无 Nonce：调用方改 Challenge
+
+`Try` / `Accept` 把 seed 原样交给 Equi-X，不拼接、不递增 nonce。未命中时换 Challenge 再试：
+
+```go
+th, err := puzz.FromBits(puzz.DefaultBits)
+if err != nil {
+    panic(err)
+}
+
+sol, err := th.Try(challenge)
+if err != nil {
+    panic(err)
+}
+if sol == nil {
+    // 本轮未命中：调用方改 challenge 再 Try
+    return
+}
+
+if !th.Accept(challenge, *sol) {
+    panic("unexpected reject")
+}
+
+// 需要 HashWX 时走主包；本包不提供 TryWithHashes
+h, err := equix.VerifyWithHashes(challenge, *sol)
+_ = h
+```
+
+该示例需 `import "github.com/cxio/equix-cgo"`。
 
 ## 取消与限时
 

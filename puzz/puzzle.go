@@ -18,8 +18,8 @@ const DefaultBits = 4
 // 但各 worker 的起点仍应避免相差 0x26f5 的整数倍，否则序列完全重合。
 const nonceStep uint64 = 0x26f5
 
-// Threshold 是难度阈值：组合哈希 SHA256(challenge || nonce || solution)
-// 的前 8 字节按大端解读后，数值小于等于 Threshold 即命中。
+// Threshold 是难度阈值：SHA256(seed || solution) 的前 8 字节按大端解读后，
+// 数值小于等于 Threshold 即命中。nonce 路径的 seed 为 challenge || le64(nonce)。
 type Threshold uint64
 
 // FromProbability 返回使每个候选解命中概率约为 p 的阈值。
@@ -55,19 +55,72 @@ func (th Threshold) hit(hash *[32]byte) bool {
 	return binary.BigEndian.Uint64(hash[:8]) <= uint64(th)
 }
 
-// combinedHash 计算 SHA256(challenge || nonce || solution) 并写入 dst。
-// 拼接的后缀（8 字节 nonce + 16 字节解）为定长，因此不同的
-// (challenge, nonce, solution) 三元组不会产生相同的输入流，无编码歧义。
-// nonce 采用 little-endian 编码，与主包 Equi-X 的输入约定一致；
-// 阈值比较按大端解读哈希字节，仅是“把前 8 字节当作大数”的约定。
-func combinedHash(dst *[32]byte, challenge []byte, nonce uint64, sol equix.Solution) {
-	var tail [24]byte
-	binary.LittleEndian.PutUint64(tail[:8], nonce)
-	for i, v := range sol {
-		binary.LittleEndian.PutUint16(tail[8+2*i:], v)
+// Try 对 seed 做一轮 Equi-X 求解，按主包返回顺序取第一个过门槛的解。
+// 未命中（无解或候选都未过门槛）返回 nil, nil；只有主包内部错误才返回 error。
+// seed 原样交给 equix.Solve，不拼接 nonce。
+func (th Threshold) Try(seed []byte) (*equix.Solution, error) {
+	sols, err := equix.Solve(seed)
+	if err != nil {
+		return nil, err
 	}
+	var hash [32]byte
+	for i := range sols {
+		seedHash(&hash, seed, sols[i])
+		if th.hit(&hash) {
+			sol := sols[i]
+			return &sol, nil
+		}
+	}
+	return nil, nil
+}
+
+// Accept 校验 seed 上的解：先做 SHA-256 门槛，通过后再做 Equi-X 结构校验。
+// 门槛未过或 Equi-X 失败（含内部错误）返回 false。
+func (th Threshold) Accept(seed []byte, sol equix.Solution) bool {
+	var hash [32]byte
+	seedHash(&hash, seed, sol)
+	if !th.hit(&hash) {
+		return false
+	}
+	return equix.Verify(seed, sol) == nil
+}
+
+// appendLE64 返回 challenge 后接 8 字节 little-endian nonce，
+// 与主包 Equi-X 的 nonce 拼接约定一致。
+func appendLE64(challenge []byte, nonce uint64) []byte {
+	out := make([]byte, len(challenge)+8)
+	copy(out, challenge)
+	binary.LittleEndian.PutUint64(out[len(challenge):], nonce)
+	return out
+}
+
+func encodeSol(dst *[16]byte, sol equix.Solution) {
+	for i, v := range sol {
+		binary.LittleEndian.PutUint16(dst[2*i:], v)
+	}
+}
+
+// seedHash 计算 SHA256(seed || solution) 并写入 dst。
+// solution 为 16 字节 little-endian 索引，与 equix.Solution.MarshalBinary 相同。
+func seedHash(dst *[32]byte, seed []byte, sol equix.Solution) {
+	var tail [16]byte
+	encodeSol(&tail, sol)
+	h := sha256.New()
+	h.Write(seed)
+	h.Write(tail[:])
+	h.Sum(dst[:0])
+}
+
+// combinedHash 计算 SHA256(challenge || nonce || solution) 并写入 dst。
+// 等价于 seedHash(challenge || le64(nonce), sol)；后缀定长，无编码歧义。
+func combinedHash(dst *[32]byte, challenge []byte, nonce uint64, sol equix.Solution) {
+	var nonceLE [8]byte
+	binary.LittleEndian.PutUint64(nonceLE[:], nonce)
+	var tail [16]byte
+	encodeSol(&tail, sol)
 	h := sha256.New()
 	h.Write(challenge)
+	h.Write(nonceLE[:])
 	h.Write(tail[:])
 	h.Sum(dst[:0])
 }

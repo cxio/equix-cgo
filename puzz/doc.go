@@ -3,9 +3,10 @@
 //
 // 难度由 [Threshold] 表达：对每个候选解计算
 //
-//	SHA256(challenge || nonce || solution) 的前 8 字节（大端 uint64）
+//	SHA256(seed || solution) 的前 8 字节（大端 uint64）
 //
-// 该值小于等于 Threshold 即命中。两种构造方式对应同一机制：
+// 该值小于等于 Threshold 即命中。nonce 路径的 seed 为
+// challenge || little-endian(nonce)。两种构造方式对应同一机制：
 //
 //   - [FromProbability]：按期望命中概率构造（如 0.1 表示约 10% 的候选解命中）；
 //   - [FromBits]：按组合哈希前缀零位数构造（如 4 位等价于 6.25% 命中概率）。
@@ -13,12 +14,17 @@
 // [Solve] 从指定 nonce 起步、以素数 0x26f5 步进反复求解，直到命中难度。
 // 搜索没有天然终点，需要限时或取消时使用 [SolveContext]。
 //
+// [Try] / [Accept] 不对 seed 拼接 nonce：调用方通过改变 Challenge 搜索。
+// [Try] 只做一轮 Equi-X，未命中返回 nil, nil。
+//
 // [Verify] 先做廉价的哈希阈值比对（约百纳秒），通过后再做完整的 Equi-X
 // 结构校验（约 10µs 量级），适合服务端对不可信提交的快速过滤。
 //
 // 需要同时得到解对应的 8 个 HashWX 哈希时，使用 [SolveWithHashes]、
 // [SolveContextWithHashes] 与 [VerifyWithHashes]。哈希类型为
 // [github.com/cxio/equix-cgo.Hashes]，作为多返回值，不进入 Solution 编码。
+// 无 Nonce 路径需要哈希时，在 [Try] 命中后调用
+// [github.com/cxio/equix-cgo.VerifyWithHashes]。
 //
 // 命中期望需要约 1/p（或 2^bits）个 Equi-X 候选解；Equi-X 每个 nonce 平均
 // 产出约 1.7 个候选解，因此折合约 0.6/p（或 2^bits/1.7）轮 nonce 尝试。

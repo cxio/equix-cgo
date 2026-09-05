@@ -135,6 +135,124 @@ func TestSolutionBinaryRoundTrip(t *testing.T) {
 	}
 }
 
+func findSolvedSeed(t *testing.T, prefix string) []byte {
+	t.Helper()
+	for i := 0; i < 256; i++ {
+		seed := append([]byte(prefix), byte(i))
+		sols, err := equix.Solve(seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sols) > 0 {
+			return seed
+		}
+	}
+	t.Fatal("no Equi-X solutions in 256 seeds")
+	return nil
+}
+
+func TestTryHitMatchesSolve(t *testing.T) {
+	seed := findSolvedSeed(t, "equix-cgo/puzzle try hit")
+	th, err := FromBits(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sol, err := th.Try(seed)
+	if err != nil {
+		t.Fatalf("Try: %v", err)
+	}
+	if sol == nil {
+		t.Fatal("Try returned nil under FromBits(0)")
+	}
+
+	want, err := equix.Solve(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *sol != want[0] {
+		t.Fatalf("Try = %v, want equix.Solve(seed)[0] = %v", *sol, want[0])
+	}
+	if !th.Accept(seed, *sol) {
+		t.Fatal("Accept rejected a freshly tried solution")
+	}
+}
+
+func TestTryMiss(t *testing.T) {
+	for i := 0; i < 32; i++ {
+		seed := findSolvedSeed(t, fmt.Sprintf("equix-cgo/puzzle try miss %d", i))
+		sol, err := Threshold(0).Try(seed)
+		if err != nil {
+			t.Fatalf("Try: %v", err)
+		}
+		if sol == nil {
+			return
+		}
+	}
+	t.Fatal("Try(Threshold(0)) kept hitting")
+}
+
+func TestTryEmptySeed(t *testing.T) {
+	th, err := FromBits(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, seed := range [][]byte{nil, {}} {
+		sol, err := th.Try(seed)
+		if err != nil {
+			t.Fatalf("Try(%#v): %v", seed, err)
+		}
+		if sol != nil && !th.Accept(seed, *sol) {
+			t.Fatalf("Accept rejected Try(%#v) solution", seed)
+		}
+	}
+}
+
+func TestAcceptRejects(t *testing.T) {
+	seed := findSolvedSeed(t, "equix-cgo/puzzle accept reject")
+	th, err := FromBits(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sol, err := th.Try(seed)
+	if err != nil || sol == nil {
+		t.Fatalf("Try: sol=%v err=%v", sol, err)
+	}
+
+	bad := *sol
+	bad[0] ^= 1
+	if th.Accept(seed, bad) {
+		t.Fatal("Accept accepted a tampered solution")
+	}
+	if th.Accept([]byte("equix-cgo/puzzle accept reject!"), *sol) {
+		t.Fatal("Accept accepted a mismatched seed")
+	}
+
+	var hash [32]byte
+	seedHash(&hash, seed, *sol)
+	if Threshold(0).Accept(seed, *sol) && binary.BigEndian.Uint64(hash[:8]) != 0 {
+		t.Fatal("Accept(Threshold(0)) accepted a non-zero digest")
+	}
+}
+
+func TestAcceptMatchesVerifyNonce(t *testing.T) {
+	challenge := []byte("equix-cgo/puzzle accept nonce")
+	th, err := FromProbability(0.1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sol, err := Solve(challenge, th, nonceStart)
+	if err != nil {
+		t.Fatalf("Solve: %v", err)
+	}
+	seed := appendLE64(challenge, sol.Nonce)
+	got := th.Accept(seed, sol.Solution)
+	want := Verify(challenge, th, sol)
+	if got != want || !got {
+		t.Fatalf("Accept=%v Verify=%v, want both true", got, want)
+	}
+}
+
 func TestSolveAndVerify(t *testing.T) {
 	challenge := []byte("equix-cgo/puzzle test")
 	th, err := FromProbability(0.1)
