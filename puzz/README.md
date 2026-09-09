@@ -42,7 +42,7 @@ func main() {
 	}
 
 	// 客户端：从 nonce=13 起搜索
-	sol, err := puzz.Solve(challenge, th, 13)
+	sol, err := puzz.Solve(challenge, th, 13, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -91,7 +91,7 @@ _ = h
 ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 defer cancel()
 
-sol, err := puzz.SolveContext(ctx, challenge, th, 13)
+sol, err := puzz.SolveContext(ctx, challenge, th, 13, 0)
 if errors.Is(err, context.DeadlineExceeded) {
     // 超时未命中
 }
@@ -103,7 +103,7 @@ if errors.Is(err, context.DeadlineExceeded) {
 
 命中期望需要约 `1/p`（或 `2^bits`）个 **Equi-X 候选解**。Equi-X 每个 nonce 平均产出约 1.7 个候选解，因此折合约 `0.6/p`（或 `2^bits/1.7`）**轮 nonce 尝试**。例如 `DefaultBits=4`：期望约 16 个候选解，对应约 9 轮 nonce。评估成本时注意区分这两个单位。
 
-nonce 步进为素数 `0x26f5`（9973），避免多 worker 的搜索序列与 2 的幂步进对齐；多 worker 并行分片时，各起点应避免相差 `0x26f5` 的整数倍，否则搜索序列完全重叠。
+nonce 默认步进为素数 `0x26f5`（9973），`Solve*` 的 `step` 参数为 `0` 时使用该值，正值则覆盖。奇素数步进可避免多 worker 的搜索序列与 2 的幂步进对齐；多 worker 并行分片时，使用相同有效步进的各起点应避免相差该步进的整数倍，否则搜索序列完全重叠。
 
 ## 验证成本
 
@@ -114,7 +114,7 @@ nonce 步进为素数 `0x26f5`（9973），避免多 worker 的搜索序列与 2
 需要解对应的 8 个 HashWX 输出时，使用 `SolveWithHashes` / `VerifyWithHashes`。哈希类型为 `equix.Hashes`，作为多返回值，不进入 `Solution` 的 24 字节编码。
 
 ```go
-sol, h, err := puzz.SolveWithHashes(challenge, th, 13)
+sol, h, err := puzz.SolveWithHashes(challenge, th, 13, 0)
 if err != nil {
     panic(err)
 }
@@ -162,7 +162,7 @@ if err := sol2.UnmarshalBinary(b); err != nil {
 | --- | --- |
 | `ratio.TargetFromProbability(p)` | `puzz.FromProbability(p)`（返回 error） |
 | `ratio.Target` | `puzz.Threshold` |
-| `ratio.Solve / Verify` | `puzz.Solve / Verify`（签名相同） |
+| `ratio.Solve / Verify` | `puzz.Solve / Verify`（`Solve` 多一个 `step` 参数，`0` 为默认步进） |
 | `xbits.TargetBits` | `puzz.DefaultBits` |
 | `xbits.Solve / Verify` | `puzz.Solve / Verify` 配合 `puzz.FromBits(...)` |
 
