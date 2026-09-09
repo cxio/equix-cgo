@@ -13,10 +13,17 @@ import (
 // DefaultBits 是文档示例采用的默认前缀零位数，命中概率约 2^-4 = 6.25%。
 const DefaultBits = 4
 
-// nonceStep 是 Solve 的 nonce 步进量：9973，一个与 2^64 互素的奇素数。
+// nonceStep 是 Solve 的默认 nonce 步进量：9973，一个与 2^64 互素的奇素数。
 // 选用奇素数可避免多 worker 的搜索序列与 2 的幂步进对齐而互相重叠；
 // 但各 worker 的起点仍应避免相差 0x26f5 的整数倍，否则序列完全重合。
 const nonceStep uint64 = 0x26f5
+
+func effectiveStep(step uint64) uint64 {
+	if step == 0 {
+		return nonceStep
+	}
+	return step
+}
 
 // Threshold 是难度阈值：SHA256(seed || solution) 的前 8 字节按大端解读后，
 // 数值小于等于 Threshold 即命中。nonce 路径的 seed 为 challenge || le64(nonce)。
@@ -157,16 +164,18 @@ func (s *Solution) UnmarshalBinary(data []byte) error {
 }
 
 // Solve 从 nonce 起步搜索命中难度的解：每个 nonce 调用一次 Equi-X 求解，
-// 对每个候选解做阈值判定，未命中则 nonce 前进 nonceStep 后重试。
+// 对每个候选解做阈值判定，未命中则 nonce 前进 step 后重试。
+// step 为 0 时使用默认 nonceStep（0x26f5）。
 // 搜索没有天然终点（阈值越低期望耗时越长），需要限时或取消机制时可用 SolveContext。
-func Solve(challenge []byte, th Threshold, nonce uint64) (*Solution, error) {
-	return SolveContext(context.Background(), challenge, th, nonce)
+func Solve(challenge []byte, th Threshold, nonce, step uint64) (*Solution, error) {
+	return SolveContext(context.Background(), challenge, th, nonce, step)
 }
 
 // SolveContext 是带取消的 Solve：进入时及每轮求解（约数十毫秒）之间检查
 // ctx，取消时返回 ctx.Err()（context.Canceled 或 context.DeadlineExceeded）。
 // 取消最多延迟一轮生效；若当前轮已产出命中解，仍优先返回该有效结果。
-func SolveContext(ctx context.Context, challenge []byte, th Threshold, nonce uint64) (*Solution, error) {
+func SolveContext(ctx context.Context, challenge []byte, th Threshold, nonce, step uint64) (*Solution, error) {
+	step = effectiveStep(step)
 	var hash [32]byte
 	for {
 		if err := ctx.Err(); err != nil {
@@ -182,17 +191,18 @@ func SolveContext(ctx context.Context, challenge []byte, th Threshold, nonce uin
 				return &Solution{Nonce: nonce, Solution: sol}, nil
 			}
 		}
-		nonce += nonceStep
+		nonce += step
 	}
 }
 
 // SolveWithHashes 与 Solve 相同，额外返回命中解对应的 8 个 HashWX 哈希。
-func SolveWithHashes(challenge []byte, th Threshold, nonce uint64) (*Solution, equix.Hashes, error) {
-	return SolveContextWithHashes(context.Background(), challenge, th, nonce)
+func SolveWithHashes(challenge []byte, th Threshold, nonce, step uint64) (*Solution, equix.Hashes, error) {
+	return SolveContextWithHashes(context.Background(), challenge, th, nonce, step)
 }
 
 // SolveContextWithHashes 是带取消的 SolveWithHashes。取消与错误时解为 nil、哈希为零值。
-func SolveContextWithHashes(ctx context.Context, challenge []byte, th Threshold, nonce uint64) (*Solution, equix.Hashes, error) {
+func SolveContextWithHashes(ctx context.Context, challenge []byte, th Threshold, nonce, step uint64) (*Solution, equix.Hashes, error) {
+	step = effectiveStep(step)
 	var hash [32]byte
 	var zero equix.Hashes
 	for {
@@ -209,7 +219,7 @@ func SolveContextWithHashes(ctx context.Context, challenge []byte, th Threshold,
 				return &Solution{Nonce: nonce, Solution: r.Solution}, r.Hashes, nil
 			}
 		}
-		nonce += nonceStep
+		nonce += step
 	}
 }
 

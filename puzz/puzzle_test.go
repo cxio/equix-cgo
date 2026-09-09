@@ -137,7 +137,7 @@ func TestSolutionBinaryRoundTrip(t *testing.T) {
 
 func findSolvedSeed(t *testing.T, prefix string) []byte {
 	t.Helper()
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		seed := append([]byte(prefix), byte(i))
 		sols, err := equix.Solve(seed)
 		if err != nil {
@@ -179,7 +179,7 @@ func TestTryHitMatchesSolve(t *testing.T) {
 }
 
 func TestTryMiss(t *testing.T) {
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		seed := findSolvedSeed(t, fmt.Sprintf("equix-cgo/puzzle try miss %d", i))
 		sol, err := Threshold(0).Try(seed)
 		if err != nil {
@@ -241,7 +241,7 @@ func TestAcceptMatchesVerifyNonce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sol, err := Solve(challenge, th, nonceStart)
+	sol, err := Solve(challenge, th, nonceStart, 0)
 	if err != nil {
 		t.Fatalf("Solve: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestSolveAndVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sol, err := Solve(challenge, th, nonceStart)
+	sol, err := Solve(challenge, th, nonceStart, 0)
 	if err != nil {
 		t.Fatalf("Solve: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestSolveWithHashes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sol, h, err := SolveWithHashes(challenge, th, nonceStart)
+	sol, h, err := SolveWithHashes(challenge, th, nonceStart, 0)
 	if err != nil {
 		t.Fatalf("SolveWithHashes: %v", err)
 	}
@@ -332,11 +332,11 @@ func TestSolveWithHashesMatchesSolve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want, err := Solve(challenge, th, nonceStart)
+	want, err := Solve(challenge, th, nonceStart, 0)
 	if err != nil {
 		t.Fatalf("Solve: %v", err)
 	}
-	got, _, err := SolveWithHashes(challenge, th, nonceStart)
+	got, _, err := SolveWithHashes(challenge, th, nonceStart, 0)
 	if err != nil {
 		t.Fatalf("SolveWithHashes: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestSolveContextWithHashesCanceled(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	sol, h, err := SolveContextWithHashes(ctx, []byte("equix-cgo/puzzle hashes cancel"), th, nonceStart)
+	sol, h, err := SolveContextWithHashes(ctx, []byte("equix-cgo/puzzle hashes cancel"), th, nonceStart, 0)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
@@ -374,7 +374,7 @@ func TestVerifyWithHashes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sol, want, err := SolveWithHashes(challenge, th, nonceStart)
+	sol, want, err := SolveWithHashes(challenge, th, nonceStart, 0)
 	if err != nil {
 		t.Fatalf("SolveWithHashes: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestVerifyWithHashesStillReturnsOnOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sol, _, err := SolveWithHashes(challenge, th, nonceStart)
+	sol, _, err := SolveWithHashes(challenge, th, nonceStart, 0)
 	if err != nil {
 		t.Fatalf("SolveWithHashes: %v", err)
 	}
@@ -442,6 +442,108 @@ func TestVerifyWithHashesStillReturnsOnOrder(t *testing.T) {
 	}
 }
 
+func TestSolveStepDefault(t *testing.T) {
+	challenge := []byte("equix-cgo/puzzle step default")
+	th, err := FromBits(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := Solve(challenge, th, nonceStart, 0)
+	if err != nil {
+		t.Fatalf("Solve step=0: %v", err)
+	}
+	b, err := Solve(challenge, th, nonceStart, nonceStep)
+	if err != nil {
+		t.Fatalf("Solve step=nonceStep: %v", err)
+	}
+	if a == nil || b == nil || *a != *b {
+		t.Fatalf("Solve step 0 = %+v, nonceStep = %+v", a, b)
+	}
+
+	ha, _, err := SolveWithHashes(challenge, th, nonceStart, 0)
+	if err != nil {
+		t.Fatalf("SolveWithHashes step=0: %v", err)
+	}
+	hb, _, err := SolveWithHashes(challenge, th, nonceStart, nonceStep)
+	if err != nil {
+		t.Fatalf("SolveWithHashes step=nonceStep: %v", err)
+	}
+	if ha == nil || hb == nil || *ha != *hb {
+		t.Fatalf("SolveWithHashes step 0 = %+v, nonceStep = %+v", ha, hb)
+	}
+}
+
+func TestSolveStepResidue(t *testing.T) {
+	challenge := []byte("equix-cgo/puzzle step residue")
+	th, err := FromBits(DefaultBits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []uint64{1, 7} {
+		sol, err := Solve(challenge, th, nonceStart, step)
+		if err != nil {
+			t.Fatalf("step %d: %v", step, err)
+		}
+		if sol == nil {
+			t.Fatalf("step %d: nil solution", step)
+		}
+		if (sol.Nonce-nonceStart)%step != 0 {
+			t.Fatalf("step %d: nonce %d not on sequence from %d", step, sol.Nonce, nonceStart)
+		}
+		if !Verify(challenge, th, sol) {
+			t.Fatalf("step %d: Verify rejected", step)
+		}
+	}
+}
+
+func TestSolveWithHashesStepMatchesSolve(t *testing.T) {
+	challenge := []byte("equix-cgo/puzzle step hashes match")
+	th, err := FromBits(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const step uint64 = 7
+	want, err := Solve(challenge, th, nonceStart, step)
+	if err != nil {
+		t.Fatalf("Solve: %v", err)
+	}
+	got, _, err := SolveWithHashes(challenge, th, nonceStart, step)
+	if err != nil {
+		t.Fatalf("SolveWithHashes: %v", err)
+	}
+	if got == nil || want == nil {
+		t.Fatal("expected non-nil solutions")
+	}
+	if *got != *want {
+		t.Fatalf("SolveWithHashes solution %+v != Solve %+v", *got, *want)
+	}
+}
+
+func TestSolveContextStepCanceled(t *testing.T) {
+	th, err := FromBits(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	challenge := []byte("equix-cgo/puzzle step cancel")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	const step uint64 = 7
+	if _, err := SolveContext(ctx, challenge, th, nonceStart, step); !errors.Is(err, context.Canceled) {
+		t.Fatalf("SolveContext: %v, want context.Canceled", err)
+	}
+	sol, h, err := SolveContextWithHashes(ctx, challenge, th, nonceStart, step)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("SolveContextWithHashes: %v, want context.Canceled", err)
+	}
+	if sol != nil {
+		t.Fatalf("solution = %+v, want nil", sol)
+	}
+	if h != (equix.Hashes{}) {
+		t.Fatalf("hashes = %v, want zero", h)
+	}
+}
+
 func TestSolveContext(t *testing.T) {
 	challenge := []byte("equix-cgo/puzzle cancel")
 
@@ -455,7 +557,7 @@ func TestSolveContext(t *testing.T) {
 	// 已取消的 ctx：进入即返回 context.Canceled。
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := SolveContext(ctx, challenge, th, nonceStart); !errors.Is(err, context.Canceled) {
+	if _, err := SolveContext(ctx, challenge, th, nonceStart, 0); !errors.Is(err, context.Canceled) {
 		t.Fatalf("SolveContext with cancelled ctx: %v, want context.Canceled", err)
 	}
 
@@ -464,7 +566,7 @@ func TestSolveContext(t *testing.T) {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel2()
 	start := time.Now()
-	_, err = SolveContext(ctx2, challenge, th, nonceStart)
+	_, err = SolveContext(ctx2, challenge, th, nonceStart, 0)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("SolveContext with timeout ctx: %v, want context.DeadlineExceeded", err)
 	}
@@ -489,7 +591,7 @@ func TestConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			challenge := fmt.Appendf(nil, "equix-cgo/puzzle concurrent %d", g)
-			sol, err := SolveContext(ctx, challenge, th, nonceStart+uint64(g))
+			sol, err := SolveContext(ctx, challenge, th, nonceStart+uint64(g), 0)
 			if err != nil {
 				t.Errorf("worker %d Solve: %v", g, err)
 				return
@@ -520,7 +622,7 @@ func TestSolveCost(t *testing.T) {
 		binary.LittleEndian.PutUint64(challenge[8:], 0x7821c0de)
 
 		start := time.Now()
-		sol, err := Solve(challenge, th, nonceStart)
+		sol, err := Solve(challenge, th, nonceStart, 0)
 		elapsed := time.Since(start)
 		if err != nil {
 			t.Fatalf("sample %d Solve: %v", i, err)
@@ -616,7 +718,7 @@ func BenchmarkSolve(b *testing.B) {
 	}
 	for i := 0; b.Loop(); i++ {
 		challenge := fmt.Appendf(nil, "bench-%d", i)
-		if _, err := Solve(challenge, th, nonceStart); err != nil {
+		if _, err := Solve(challenge, th, nonceStart, 0); err != nil {
 			b.Fatal(err)
 		}
 	}
