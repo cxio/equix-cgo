@@ -156,16 +156,6 @@ if err := sol2.UnmarshalBinary(b); err != nil {
 }
 ```
 
-## 从旧包迁移
-
-| 旧 API | 新 API |
-| --- | --- |
-| `ratio.TargetFromProbability(p)` | `puzz.FromProbability(p)`（返回 error） |
-| `ratio.Target` | `puzz.Threshold` |
-| `ratio.Solve / Verify` | `puzz.Solve / Verify`（`Solve` 多一个 `step` 参数，`0` 为默认步进） |
-| `xbits.TargetBits` | `puzz.DefaultBits` |
-| `xbits.Solve / Verify` | `puzz.Solve / Verify` 配合 `puzz.FromBits(...)` |
-
 ## 许可
 
 与主仓库一致：Go 代码为 MIT，静态链入的 Equi-X/HashX/HashWX C 代码为 LGPL-3.0。

@@ -208,6 +208,56 @@ func TestTryEmptySeed(t *testing.T) {
 	}
 }
 
+func TestTryCostSecondScale(t *testing.T) {
+	const (
+		samples = 10
+		// 约秒级难度：单次 Try ≈ 30ms，
+		// p=0.01 尝试约 ~50 次 Try ≈ 1–2s。
+		prob = 0.01
+	)
+
+	th, err := FromProbability(prob)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tryDurations := make([]time.Duration, 0, samples)
+	tryCounts := make([]uint64, 0, samples)
+
+	for i := range samples {
+		start := time.Now()
+		var seed []byte
+		var sol *equix.Solution
+		tries := uint64(0)
+		for {
+			seed = fmt.Appendf(nil, "equix-cgo/puzzle try-cost %d %d", i, tries)
+			tries++
+			sol, err = th.Try(seed)
+			if err != nil {
+				t.Fatalf("sample %d Try: %v", i, err)
+			}
+			if sol != nil {
+				break
+			}
+		}
+		elapsed := time.Since(start)
+		if !th.Accept(seed, *sol) {
+			t.Fatalf("sample %d Accept rejected", i)
+		}
+
+		tryDurations = append(tryDurations, elapsed)
+		tryCounts = append(tryCounts, tries)
+		t.Logf("sample %d: try=%s tries=%d", i, elapsed, tries)
+	}
+
+	// p=0.006 时每候选解命中约 0.6%，每轮 Try 约 1.7 个候选，期望 ~80 次。
+	t.Logf("try  min=%s avg=%s max=%s",
+		minDuration(tryDurations), avgDuration(tryDurations), maxDuration(tryDurations))
+	t.Logf("tries min=%d avg=%.1f max=%d (p=%g, expected≈%.0f Try calls)",
+		minUint64(tryCounts), avgUint64(tryCounts), maxUint64(tryCounts),
+		prob, 1/(prob*1.7))
+}
+
 func TestAcceptRejects(t *testing.T) {
 	seed := findSolvedSeed(t, "equix-cgo/puzzle accept reject")
 	th, err := FromBits(0)
@@ -602,6 +652,51 @@ func TestConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestSolveCostProbability02(t *testing.T) {
+	const (
+		samples = 8
+		prob    = 0.02
+	)
+
+	th, err := FromProbability(prob)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	solveDurations := make([]time.Duration, 0, samples)
+	nonceTries := make([]uint64, 0, samples)
+
+	for i := range samples {
+		challenge := make([]byte, 16)
+		binary.LittleEndian.PutUint64(challenge, uint64(i+1))
+		binary.LittleEndian.PutUint64(challenge[8:], 0x7821c0de)
+
+		start := time.Now()
+		sol, err := Solve(challenge, th, nonceStart, 0)
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatalf("sample %d Solve: %v", i, err)
+		}
+		if !Verify(challenge, th, sol) {
+			t.Fatalf("sample %d Verify failed", i)
+		}
+
+		tries := (sol.Nonce-nonceStart)/nonceStep + 1
+		solveDurations = append(solveDurations, elapsed)
+		nonceTries = append(nonceTries, tries)
+
+		t.Logf("sample %d: solve=%s nonce=%d tries=%d",
+			i, elapsed, sol.Nonce, tries)
+	}
+
+	// p=0.02 时每个候选解命中约 2%，折合约 1/(0.02*1.7)≈29 轮 nonce。
+	t.Logf("solve min=%s avg=%s max=%s",
+		minDuration(solveDurations), avgDuration(solveDurations), maxDuration(solveDurations))
+	t.Logf("tries min=%d avg=%.1f max=%d (p=%g, expected≈%.1f nonce rounds)",
+		minUint64(nonceTries), avgUint64(nonceTries), maxUint64(nonceTries),
+		prob, 1/(prob*1.7))
 }
 
 func TestSolveCost(t *testing.T) {
